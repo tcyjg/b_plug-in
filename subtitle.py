@@ -1,7 +1,12 @@
 # subtitle.py
 import asyncio
 from bilibili_api import video, Credential
+from bilibili_api.utils import network as bili_network
 import os
+
+# Work around aiohttp/brotli compatibility issues in some environments.
+# Avoid advertising br encoding so upstream will return gzip/deflate payloads.
+bili_network.HEADERS["Accept-Encoding"] = "gzip, deflate"
 
 async def get_subtitle_text(bvid: str, sessdata: str) -> tuple[str, dict]:
     """
