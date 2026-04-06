@@ -1,59 +1,81 @@
-const API_BASE = "http://127.0.0.1:8000";
+﻿const API_BASE = "http://127.0.0.1:8000";
 
-// ── 注入侧边栏 ───────────────────────────────────
+const PANEL_MIN_WIDTH = 320;
+const PANEL_MAX_WIDTH = 720;
+const PANEL_DEFAULT_WIDTH = 380;
+
+let lastBvid = null;
+let cachedResult = null;
+let loading = false;
+let panelWidth = PANEL_DEFAULT_WIDTH;
+
 function injectUI() {
   if (document.getElementById("bili-summarizer-btn")) return;
 
   const btn = document.createElement("button");
   btn.id = "bili-summarizer-btn";
-  btn.textContent = "速 览";
+  btn.textContent = "AI速览";
   document.body.appendChild(btn);
 
   const panel = document.createElement("div");
   panel.id = "bili-summarizer-panel";
+  panel.style.width = `${panelWidth}px`;
   panel.innerHTML = `
+    <div class="bs-resizer" id="bs-resizer" title="拖动调整宽度"></div>
     <div class="bs-header">
-      <span>⚡ 视频速览</span>
-      <button class="bs-close" id="bs-close-btn">✕</button>
+      <span>视频速览</span>
+      <button class="bs-close" id="bs-close-btn">×</button>
+    </div>
+    <div class="bs-controls">
+      <button id="bs-parse-btn" class="bs-parse-btn">解析当前视频</button>
+      <button id="bs-refresh-btn" class="bs-refresh-btn">重新解析</button>
     </div>
     <div class="bs-body" id="bs-body"></div>
   `;
   document.body.appendChild(panel);
 
-  btn.addEventListener("click", onOpen);
+  btn.addEventListener("click", onOpenPanel);
   document.getElementById("bs-close-btn").addEventListener("click", () => {
     panel.classList.remove("open");
     btn.style.display = "block";
   });
+
+  document.getElementById("bs-parse-btn").addEventListener("click", () => onParse(false));
+  document.getElementById("bs-refresh-btn").addEventListener("click", () => onParse(true));
+
+  initResize(panel, document.getElementById("bs-resizer"));
+  renderWelcome();
 }
 
-// ── 打开并加载 ───────────────────────────────────
-let lastBvid = null;
-let cachedResult = null;
+function onOpenPanel() {
+  const panel = document.getElementById("bili-summarizer-panel");
+  panel.classList.add("open");
+  document.getElementById("bili-summarizer-btn").style.display = "none";
+}
 
-async function onOpen() {
+async function onParse(forceRefresh) {
+  if (loading) return;
+
   const bvid = getBvid();
   if (!bvid) {
-    alert("无法识别视频ID，请确认在视频页面");
+    renderError("无法识别视频ID，请确认当前在视频页面");
     return;
   }
 
-  const panel = document.getElementById("bili-summarizer-panel");
-  const body  = document.getElementById("bs-body");
-  panel.classList.add("open");
-  document.getElementById("bili-summarizer-btn").style.display = "none";
+  onOpenPanel();
+  const body = document.getElementById("bs-body");
 
-  // 同一视频不重复请求
-  if (bvid === lastBvid && cachedResult) {
+  if (!forceRefresh && bvid === lastBvid && cachedResult) {
     renderResult(cachedResult);
     return;
   }
 
+  loading = true;
   body.innerHTML = `
     <div class="bs-loading">
       <div class="bs-spinner"></div>
       <span>正在分析视频内容...</span>
-      <span style="font-size:11px;color:#bbb">通常需要 5~15 秒</span>
+      <span style="font-size:11px;color:#9ca3af">通常需要 5~15 秒</span>
     </div>
   `;
 
@@ -75,21 +97,30 @@ async function onOpen() {
     lastBvid = bvid;
     cachedResult = data;
     renderResult(data);
-
   } catch (e) {
-    body.innerHTML = `
-      <div class="bs-error">
-        ❌ ${e.message}<br><br>
-        <span style="font-size:11px;color:#999">
-          请确认后端服务正在运行：<br>
-          uvicorn main:app --reload --port 8000
-        </span>
-      </div>
-    `;
+    renderError(`${e.message}<br><br><span style="font-size:11px;color:#6b7280">请确认后端正在运行：<br>uvicorn main:app --reload --port 8000</span>`);
+  } finally {
+    loading = false;
   }
 }
 
-// ── 渲染结果 ─────────────────────────────────────
+function renderWelcome() {
+  const body = document.getElementById("bs-body");
+  if (!body) return;
+  body.innerHTML = `
+    <div class="bs-empty">
+      <div class="bs-empty-title">准备就绪</div>
+      <div class="bs-empty-desc">点击上方“解析当前视频”开始生成总结。</div>
+    </div>
+  `;
+}
+
+function renderError(message) {
+  const body = document.getElementById("bs-body");
+  if (!body) return;
+  body.innerHTML = `<div class="bs-error">✖ ${message}</div>`;
+}
+
 function renderResult(data) {
   const body = document.getElementById("bs-body");
 
@@ -120,26 +151,56 @@ function renderResult(data) {
     ${pointsHTML}
 
     <div class="bs-section-title">章节跳转 · 点击直达</div>
-    ${chaptersHTML || '<div style="font-size:13px;color:#999">暂无章节信息</div>'}
+    ${chaptersHTML || '<div style="font-size:13px;color:#6b7280">暂无章节信息</div>'}
   `;
 
-  // 点击章节跳转
   body.querySelectorAll(".bs-chapter").forEach(el => {
     el.addEventListener("click", () => {
-      const sec = parseInt(el.dataset.seconds);
+      const sec = parseInt(el.dataset.seconds, 10);
       const videoEl = document.querySelector("video");
-      if (videoEl) {
+      if (videoEl && !Number.isNaN(sec)) {
         videoEl.currentTime = sec;
         videoEl.play();
-        // 可选：关闭面板让用户看视频
-        // document.getElementById("bili-summarizer-panel").classList.remove("open");
-        // document.getElementById("bili-summarizer-btn").style.display = "block";
       }
     });
   });
 }
 
-// ── 工具函数 ─────────────────────────────────────
+function initResize(panel, handle) {
+  let dragging = false;
+
+  const onMove = (e) => {
+    if (!dragging) return;
+    const pointerX = e.clientX ?? e.touches?.[0]?.clientX;
+    if (typeof pointerX !== "number") return;
+
+    const width = window.innerWidth - pointerX;
+    const safeWidth = Math.max(PANEL_MIN_WIDTH, Math.min(PANEL_MAX_WIDTH, width));
+    panelWidth = safeWidth;
+    panel.style.width = `${panelWidth}px`;
+  };
+
+  const onUp = () => {
+    if (!dragging) return;
+    dragging = false;
+    document.body.classList.remove("bs-resizing");
+  };
+
+  handle.addEventListener("mousedown", () => {
+    dragging = true;
+    document.body.classList.add("bs-resizing");
+  });
+  window.addEventListener("mousemove", onMove);
+  window.addEventListener("mouseup", onUp);
+
+  handle.addEventListener("touchstart", () => {
+    dragging = true;
+    document.body.classList.add("bs-resizing");
+  }, { passive: true });
+  window.addEventListener("touchmove", onMove, { passive: true });
+  window.addEventListener("touchend", onUp);
+}
+
 function getBvid() {
   const match = location.pathname.match(/\/(BV\w+)/i);
   return match ? match[1] : null;
@@ -156,7 +217,6 @@ function formatTime(seconds) {
   return `${m}:${s.toString().padStart(2, "0")}`;
 }
 
-// ── B站是SPA，监听路由变化 ───────────────────────
 let lastPath = location.pathname;
 injectUI();
 
@@ -165,10 +225,10 @@ const observer = new MutationObserver(() => {
     lastPath = location.pathname;
     lastBvid = null;
     cachedResult = null;
-    // 移除旧UI，重新注入
+
     document.getElementById("bili-summarizer-btn")?.remove();
     document.getElementById("bili-summarizer-panel")?.remove();
-    setTimeout(injectUI, 1000); // 等页面渲染完
+    setTimeout(injectUI, 1000);
   }
 });
 observer.observe(document.body, { childList: true, subtree: true });

@@ -1,0 +1,146 @@
+<component name="InspectionProjectProfileManager">
+  <profile version="1.0">
+    <option name="myName" value="Project Default" />
+    <inspection_tool class="Eslint" enabled="true" level="WARNING" enabled_by_default="true" />
+    <inspection_tool class="PyPackageRequirementsInspection" enabled="true" level="WARNING" enabled_by_default="true">
+      <option name="ignoredPackages">
+        <list>
+          <option value="aiohappyeyeballs" />
+          <option value="aiohttp" />
+          <option value="aiosignal" />
+          <option value="altgraph" />
+          <option value="amqp" />
+          <option value="annotated-types" />
+          <option value="anyio" />
+          <option value="async-timeout" />
+          <option value="attrs" />
+          <option value="av" />
+          <option value="beautifulsoup4" />
+          <option value="billiard" />
+          <option value="blinker" />
+          <option value="Brotli" />
+          <option value="celery" />
+          <option value="certifi" />
+          <option value="cffi" />
+          <option value="charset-normalizer" />
+          <option value="click" />
+          <option value="click-didyoumean" />
+          <option value="click-plugins" />
+          <option value="click-repl" />
+          <option value="colorama" />
+          <option value="coloredlogs" />
+          <option value="cssselect2" />
+          <option value="ctranslate2" />
+          <option value="distro" />
+          <option value="dnspython" />
+          <option value="email_validator" />
+          <option value="exceptiongroup" />
+          <option value="fastapi" />
+          <option value="fastapi-cli" />
+          <option value="faster-whisper" />
+          <option value="ffmpeg-python" />
+          <option value="filelock" />
+          <option value="flatbuffers" />
+          <option value="fonttools" />
+          <option value="frozenlist" />
+          <option value="fsspec" />
+          <option value="future" />
+          <option value="gmssl" />
+          <option value="h11" />
+          <option value="hf-xet" />
+          <option value="httpcore" />
+          <option value="httptools" />
+          <option value="httpx" />
+          <option value="huggingface-hub" />
+          <option value="humanfriendly" />
+          <option value="humanize" />
+          <option value="idna" />
+          <option value="Jinja2" />
+          <option value="jiter" />
+          <option value="kombu" />
+          <option value="lxml" />
+          <option value="macholib" />
+          <option value="Markdown" />
+          <option value="markdown-it-py" />
+          <option value="markdown_pdf" />
+          <option value="MarkupSafe" />
+          <option value="mdurl" />
+          <option value="modelscope" />
+          <option value="mpmath" />
+          <option value="multidict" />
+          <option value="networkx" />
+          <option value="numpy" />
+          <option value="onnxruntime" />
+          <option value="openai" />
+          <option value="orjson" />
+          <option value="packaging" />
+          <option value="pdfkit" />
+          <option value="pefile" />
+          <option value="pillow" />
+          <option value="prometheus_client" />
+          <option value="prompt_toolkit" />
+          <option value="propcache" />
+          <option value="protobuf" />
+          <option value="pycparser" />
+          <option value="pycryptodomex" />
+          <option value="pydantic" />
+          <option value="pydantic_core" />
+          <option value="pydyf" />
+          <option value="PyExecJS" />
+          <option value="Pygments" />
+          <option value="pyinstaller" />
+          <option value="pyinstaller-hooks-contrib" />
+          <option value="PyMuPDF" />
+          <option value="pyphen" />
+          <option value="pyreadline3" />
+          <option value="python-dateutil" />
+          <option value="python-docx" />
+          <option value="python-dotenv" />
+          <option value="python-multipart" />
+          <option value="pytz" />
+          <option value="pywin32-ctypes" />
+          <option value="PyYAML" />
+          <option value="redis" />
+          <option value="requests" />
+          <option value="rich" />
+          <option value="rich-toolkit" />
+          <option value="shellingham" />
+          <option value="six" />
+          <option value="sniffio" />
+          <option value="soupsieve" />
+          <option value="starlette" />
+          <option value="sympy" />
+          <option value="SQLAlchemy" />
+          <option value="tenacity" />
+          <option value="tinycss2" />
+          <option value="tinyhtml5" />
+          <option value="tokenizers" />
+          <option value="tornado" />
+          <option value="tqdm" />
+          <option value="typer" />
+          <option value="typing-inspection" />
+          <option value="tzdata" />
+          <option value="urllib3" />
+          <option value="uvicorn" />
+          <option value="vine" />
+          <option value="watchfiles" />
+          <option value="wcwidth" />
+          <option value="weasyprint" />
+          <option value="webencodings" />
+          <option value="websockets" />
+          <option value="yarl" />
+          <option value="yt-dlp" />
+          <option value="zopfli" />
+        </list>
+      </option>
+    </inspection_tool>
+    <inspection_tool class="PyPep8NamingInspection" enabled="true" level="WEAK WARNING" enabled_by_default="true">
+      <option name="ignoredErrors">
+        <list>
+          <option value="N802" />
+          <option value="N806" />
+        </list>
+      </option>
+    </inspection_tool>
+  </profile>
+</component>

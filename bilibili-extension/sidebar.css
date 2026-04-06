@@ -1,157 +1,285 @@
-#bili-summarizer-btn {
+﻿#bili-summarizer-btn {
   position: fixed;
   right: 20px;
   top: 50%;
   transform: translateY(-50%);
   z-index: 9999;
-  background: #00a1d6;
-  color: white;
+  background: #0b7cc1;
+  color: #fff;
   border: none;
-  border-radius: 8px;
+  border-radius: 10px;
   padding: 10px 14px;
   font-size: 13px;
   cursor: pointer;
   writing-mode: vertical-rl;
   letter-spacing: 2px;
-  box-shadow: 0 2px 12px rgba(0,0,0,0.2);
-  transition: background 0.2s;
+  box-shadow: 0 6px 20px rgba(11, 124, 193, 0.25);
+  transition: background 0.2s ease;
 }
-#bili-summarizer-btn:hover { background: #0085b3; }
+
+#bili-summarizer-btn:hover {
+  background: #08659d;
+}
 
 #bili-summarizer-panel {
   position: fixed;
   right: 0;
   top: 0;
-  width: 340px;
+  width: 380px;
+  max-width: 90vw;
   height: 100vh;
-  background: #fff;
+  background: #ffffff;
   z-index: 9998;
-  box-shadow: -4px 0 20px rgba(0,0,0,0.15);
+  box-shadow: -8px 0 30px rgba(15, 23, 42, 0.18);
   display: none;
   flex-direction: column;
-  font-family: -apple-system, sans-serif;
+  font-family: "Segoe UI", "PingFang SC", "Microsoft YaHei", sans-serif;
 }
-#bili-summarizer-panel.open { display: flex; }
+
+#bili-summarizer-panel.open {
+  display: flex;
+}
+
+.bs-resizer {
+  position: absolute;
+  left: -4px;
+  top: 0;
+  width: 8px;
+  height: 100%;
+  cursor: ew-resize;
+  background: transparent;
+}
+
+.bs-resizer::after {
+  content: "";
+  position: absolute;
+  left: 3px;
+  top: 0;
+  width: 2px;
+  height: 100%;
+  background: rgba(148, 163, 184, 0.35);
+}
+
+body.bs-resizing,
+body.bs-resizing * {
+  cursor: ew-resize !important;
+  user-select: none !important;
+}
 
 .bs-header {
-  background: #00a1d6;
-  color: white;
+  background: linear-gradient(90deg, #0b7cc1, #0891b2);
+  color: #fff;
   padding: 14px 16px;
   display: flex;
   justify-content: space-between;
   align-items: center;
   font-size: 14px;
-  font-weight: 500;
+  font-weight: 600;
   flex-shrink: 0;
 }
+
 .bs-close {
   background: none;
   border: none;
-  color: white;
-  font-size: 18px;
+  color: #fff;
+  font-size: 22px;
   cursor: pointer;
   padding: 0 4px;
   line-height: 1;
 }
+
+.bs-controls {
+  padding: 12px 14px;
+  border-bottom: 1px solid #e5e7eb;
+  display: flex;
+  gap: 8px;
+}
+
+.bs-parse-btn,
+.bs-refresh-btn {
+  border: none;
+  border-radius: 8px;
+  padding: 8px 10px;
+  font-size: 12px;
+  cursor: pointer;
+}
+
+.bs-parse-btn {
+  background: #0b7cc1;
+  color: #fff;
+  flex: 1;
+}
+
+.bs-parse-btn:hover {
+  background: #08659d;
+}
+
+.bs-refresh-btn {
+  background: #eef2f7;
+  color: #334155;
+}
+
+.bs-refresh-btn:hover {
+  background: #e2e8f0;
+}
+
 .bs-body {
   padding: 16px;
   overflow-y: auto;
   flex: 1;
 }
+
+.bs-empty {
+  margin-top: 8px;
+  padding: 14px;
+  border-radius: 10px;
+  background: #f8fafc;
+  border: 1px solid #e2e8f0;
+}
+
+.bs-empty-title {
+  font-size: 14px;
+  color: #0f172a;
+  font-weight: 600;
+  margin-bottom: 6px;
+}
+
+.bs-empty-desc {
+  font-size: 13px;
+  color: #475569;
+  line-height: 1.6;
+}
+
 .bs-section-title {
   font-size: 11px;
-  font-weight: 600;
-  color: #999;
+  font-weight: 700;
+  color: #64748b;
   letter-spacing: 1px;
   margin: 16px 0 8px;
 }
+
 .bs-one-line {
-  background: #f0f9ff;
-  border-left: 3px solid #00a1d6;
+  background: #eff6ff;
+  border-left: 3px solid #0b7cc1;
   padding: 10px 12px;
   font-size: 14px;
-  color: #333;
-  border-radius: 0 6px 6px 0;
-  line-height: 1.6;
+  color: #1f2937;
+  border-radius: 0 8px 8px 0;
+  line-height: 1.7;
 }
+
 .bs-point {
   display: flex;
   gap: 8px;
   margin-bottom: 8px;
   font-size: 13px;
-  color: #444;
-  line-height: 1.5;
+  color: #334155;
+  line-height: 1.6;
   align-items: flex-start;
 }
+
 .bs-dot {
   width: 6px;
   height: 6px;
   border-radius: 50%;
-  background: #00a1d6;
-  margin-top: 5px;
+  background: #0b7cc1;
+  margin-top: 6px;
   flex-shrink: 0;
 }
+
 .bs-chapter {
-  background: #f7f8fa;
+  background: #f8fafc;
   border-radius: 8px;
   padding: 10px 12px;
   margin-bottom: 8px;
   cursor: pointer;
-  transition: background 0.15s;
-  border: 1px solid transparent;
+  transition: background 0.15s ease;
+  border: 1px solid #e2e8f0;
 }
+
 .bs-chapter:hover {
-  background: #e8f4f8;
-  border-color: #00a1d6;
+  background: #eef6fb;
+  border-color: #7dd3fc;
 }
+
 .bs-chapter-top {
   display: flex;
   justify-content: space-between;
   align-items: center;
-  margin-bottom: 3px;
+  margin-bottom: 4px;
 }
-.bs-chapter-title { font-size: 13px; font-weight: 500; color: #333; }
+
+.bs-chapter-title {
+  font-size: 13px;
+  font-weight: 600;
+  color: #1f2937;
+}
+
 .bs-chapter-time {
   font-size: 11px;
-  color: #00a1d6;
-  background: #e0f3fa;
+  color: #0b7cc1;
+  background: #e0f2fe;
   padding: 1px 7px;
   border-radius: 10px;
   white-space: nowrap;
 }
-.bs-chapter-desc { font-size: 12px; color: #888; line-height: 1.4; }
+
+.bs-chapter-desc {
+  font-size: 12px;
+  color: #64748b;
+  line-height: 1.5;
+}
+
 .bs-loading {
   display: flex;
   flex-direction: column;
   align-items: center;
   justify-content: center;
   height: 200px;
-  color: #999;
+  color: #64748b;
   font-size: 13px;
   gap: 12px;
 }
+
 .bs-spinner {
   width: 28px;
   height: 28px;
-  border: 3px solid #eee;
-  border-top-color: #00a1d6;
+  border: 3px solid #e5e7eb;
+  border-top-color: #0b7cc1;
   border-radius: 50%;
   animation: bs-spin 0.8s linear infinite;
 }
-@keyframes bs-spin { to { transform: rotate(360deg); } }
+
+@keyframes bs-spin {
+  to {
+    transform: rotate(360deg);
+  }
+}
+
 .bs-error {
-  background: #fff0f0;
-  border: 1px solid #fcc;
+  background: #fff1f2;
+  border: 1px solid #fecdd3;
   border-radius: 8px;
   padding: 12px;
   font-size: 13px;
-  color: #c00;
+  color: #be123c;
   line-height: 1.6;
 }
+
 .bs-video-title {
   font-size: 12px;
-  color: #666;
+  color: #64748b;
   line-height: 1.5;
-  margin-bottom: 4px;
+  margin-bottom: 6px;
   word-break: break-all;
+}
+
+@media (max-width: 900px) {
+  #bili-summarizer-panel {
+    width: min(92vw, 460px) !important;
+  }
+
+  .bs-resizer {
+    width: 0;
+  }
 }
