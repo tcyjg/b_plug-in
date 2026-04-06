@@ -1,0 +1,18 @@
+{
+  "manifest_version": 3,
+  "name": "B站视频速览",
+  "version": "1.0",
+  "description": "一键总结B站视频内容",
+  "permissions": ["cookies", "activeTab"],
+  "host_permissions": [
+    "https://*.bilibili.com/*",
+    "http://127.0.0.1:8000/*"
+  ],
+  "content_scripts": [
+    {
+      "matches": ["https://www.bilibili.com/video/*"],
+      "js": ["content.js"],
+      "css": ["sidebar.css"]
+    }
+  ]
+}
