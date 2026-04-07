@@ -1,4 +1,4 @@
-# main.py
+from datetime import datetime, timedelta
 from fastapi import FastAPI, HTTPException
 from fastapi.middleware.cors import CORSMiddleware
 from pydantic import BaseModel
@@ -10,10 +10,10 @@ from summarizer import summarize
 
 load_dotenv()
 SESSDATA = os.getenv("BILIBILI_SESSDATA", "")
+CACHE_TTL_MINUTES = int(os.getenv("SUMMARY_CACHE_TTL_MINUTES", "120"))
 
 app = FastAPI(title="B站视频总结服务")
 
-# 允许插件跨域调用
 app.add_middleware(
     CORSMiddleware,
     allow_origins=["*"],
@@ -21,31 +21,69 @@ app.add_middleware(
     allow_headers=["*"],
 )
 
+
 class SummarizeRequest(BaseModel):
     bvid: str
-    sessdata: str = ""  # 插件可以把浏览器 cookie 传过来
+    sessdata: str = ""
+    style: str = "专业"
+    force_refresh: bool = False
+
+
+# 临时内存缓存：key = bvid + style
+_summary_cache: dict[str, dict] = {}
+
+
+def _cache_key(bvid: str, style: str) -> str:
+    return f"{bvid}::{style.strip() or '专业'}"
+
+
+def _clear_expired_cache() -> None:
+    now = datetime.utcnow()
+    expire_keys = []
+    for key, payload in _summary_cache.items():
+        expire_at = payload.get("expire_at")
+        if isinstance(expire_at, datetime) and expire_at <= now:
+            expire_keys.append(key)
+
+    for key in expire_keys:
+        _summary_cache.pop(key, None)
+
 
 @app.post("/summarize")
 async def summarize_video(req: SummarizeRequest):
-    # 优先用请求里传来的 sessdata，没有就用 .env 里的
     sessdata = req.sessdata or SESSDATA
+    style = (req.style or "专业").strip()
 
     if not sessdata:
-        raise HTTPException(400, "需要 B站登录态 SESSDATA")
+        raise HTTPException(400, "需要 B 站登录态 SESSDATA")
 
-    # 获取字幕
+    _clear_expired_cache()
+    key = _cache_key(req.bvid, style)
+
+    if not req.force_refresh and key in _summary_cache:
+        cached = _summary_cache[key]["data"].copy()
+        cached["cached"] = True
+        return cached
+
     subtitle_text, info = await get_subtitle_text(req.bvid, sessdata)
 
     if not subtitle_text:
         raise HTTPException(422, f"视频《{info['title']}》没有找到字幕，暂不支持")
 
-    # AI 总结
-    result = summarize(info["title"], subtitle_text)
+    result = summarize(info["title"], subtitle_text, style=style)
     result["title"] = info["title"]
     result["bvid"] = req.bvid
+    result["style"] = style
+    result["cached"] = False
+
+    _summary_cache[key] = {
+        "data": result,
+        "expire_at": datetime.utcnow() + timedelta(minutes=CACHE_TTL_MINUTES),
+    }
 
     return result
 
+
 @app.get("/health")
 def health():
-    return {"status": "ok"}
+    return {"status": "ok", "cache_size": len(_summary_cache)}
