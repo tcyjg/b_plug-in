@@ -3,7 +3,6 @@ const API_BASE = "http://127.0.0.1:8000";
 const PANEL_MIN_WIDTH = 320;
 const PANEL_MAX_WIDTH = 720;
 const PANEL_DEFAULT_WIDTH = 380;
-const STYLE_STORAGE_KEY = "bs-output-style";
 
 let lastBvid = null;
 let cachedResult = null;
@@ -28,15 +27,6 @@ function injectUI() {
       <button class="bs-close" id="bs-close-btn">×</button>
     </div>
     <div class="bs-controls">
-      <div class="bs-style-wrap">
-        <label for="bs-style">输出风格</label>
-        <select id="bs-style">
-          <option value="专业">专业</option>
-          <option value="通俗">通俗</option>
-          <option value="简洁">简洁</option>
-          <option value="深度">深度</option>
-        </select>
-      </div>
       <button id="bs-parse-btn" class="bs-parse-btn">解析当前视频</button>
       <button id="bs-refresh-btn" class="bs-refresh-btn">重新解析</button>
     </div>
@@ -48,13 +38,6 @@ function injectUI() {
   document.getElementById("bs-close-btn").addEventListener("click", () => {
     panel.classList.remove("open");
     btn.style.display = "block";
-  });
-
-  const styleSelect = document.getElementById("bs-style");
-  const savedStyle = localStorage.getItem(STYLE_STORAGE_KEY) || "专业";
-  styleSelect.value = savedStyle;
-  styleSelect.addEventListener("change", () => {
-    localStorage.setItem(STYLE_STORAGE_KEY, styleSelect.value);
   });
 
   document.getElementById("bs-parse-btn").addEventListener("click", () => onParse(false));
@@ -74,7 +57,6 @@ async function onParse(forceRefresh) {
   if (loading) return;
 
   const bvid = getBvid();
-  const style = (document.getElementById("bs-style")?.value || "专业").trim();
   if (!bvid) {
     renderError("无法识别视频ID，请确认当前在视频页面");
     return;
@@ -83,7 +65,7 @@ async function onParse(forceRefresh) {
   onOpenPanel();
   const body = document.getElementById("bs-body");
 
-  if (!forceRefresh && bvid === lastBvid && cachedResult && cachedResult.style === style) {
+  if (!forceRefresh && bvid === lastBvid && cachedResult) {
     renderResult(cachedResult);
     return;
   }
@@ -103,7 +85,7 @@ async function onParse(forceRefresh) {
     const resp = await fetch(`${API_BASE}/summarize`, {
       method: "POST",
       headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({ bvid, sessdata, style, force_refresh: forceRefresh }),
+      body: JSON.stringify({ bvid, sessdata, force_refresh: forceRefresh }),
     });
 
     if (!resp.ok) {
@@ -129,7 +111,7 @@ function renderWelcome() {
     <div class="bs-empty">
       <div class="bs-empty-title">准备就绪</div>
       <div class="bs-empty-desc">点击上方“解析当前视频”开始生成总结。</div>
-      <div class="bs-empty-desc">支持缓存、知识图谱和输出风格自定义。</div>
+      <div class="bs-empty-desc">支持后端缓存和核心思想流程图。</div>
     </div>
   `;
 }
@@ -160,13 +142,12 @@ function renderResult(data) {
     </div>
   `).join("");
 
-  const kgHTML = renderKnowledgeGraph(data.knowledge_graph || {});
+  const flowchartHTML = renderFlowchart(data.flowchart_uml || "");
 
   body.innerHTML = `
     <div class="bs-video-title">${escapeHTML(data.title || "")}</div>
 
     <div class="bs-meta-row">
-      <span class="bs-tag">风格：${escapeHTML(data.style || "专业")}</span>
       <span class="bs-tag ${data.cached ? "is-cache" : ""}">${data.cached ? "命中缓存" : "实时生成"}</span>
     </div>
 
@@ -179,8 +160,8 @@ function renderResult(data) {
     <div class="bs-section-title">章节跳转 · 点击直达</div>
     ${chaptersHTML || '<div style="font-size:13px;color:#6b7280">暂无章节信息</div>'}
 
-    <div class="bs-section-title">知识图谱</div>
-    ${kgHTML}
+    <div class="bs-section-title">核心思想流程图</div>
+    ${flowchartHTML}
   `;
 
   body.querySelectorAll(".bs-chapter").forEach(el => {
@@ -193,62 +174,38 @@ function renderResult(data) {
       }
     });
   });
+
+  const umlPreview = body.querySelector(".bs-uml-preview");
+  if (umlPreview) {
+    const encoded = encodeMermaid(data.flowchart_uml || "");
+    umlPreview.src = `https://mermaid.ink/img/${encoded}`;
+    umlPreview.onerror = () => {
+      const fallback = body.querySelector(".bs-uml-fallback");
+      if (fallback) fallback.style.display = "block";
+      umlPreview.style.display = "none";
+    };
+  }
 }
 
-function renderKnowledgeGraph(graph) {
-  const nodes = Array.isArray(graph.nodes) ? graph.nodes.slice(0, 12) : [];
-  const edges = Array.isArray(graph.edges) ? graph.edges.slice(0, 24) : [];
-
-  if (!nodes.length) {
-    return '<div style="font-size:13px;color:#6b7280">暂无图谱信息</div>';
+function renderFlowchart(uml) {
+  const cleanUml = String(uml || "").trim();
+  if (!cleanUml) {
+    return '<div style="font-size:13px;color:#6b7280">暂无流程图信息</div>';
   }
 
-  const width = 320;
-  const height = 220;
-  const centerX = width / 2;
-  const centerY = height / 2;
-  const radius = 78;
-
-  const posMap = new Map();
-  nodes.forEach((n, i) => {
-    const angle = (2 * Math.PI * i) / nodes.length - Math.PI / 2;
-    const x = centerX + radius * Math.cos(angle);
-    const y = centerY + radius * Math.sin(angle);
-    posMap.set(String(n.id || `n${i}`), { x, y, label: n.label || `节点${i + 1}` });
-  });
-
-  const lineSvg = edges.map(edge => {
-    const from = posMap.get(String(edge.source || ""));
-    const to = posMap.get(String(edge.target || ""));
-    if (!from || !to) return "";
-    return `<line x1="${from.x}" y1="${from.y}" x2="${to.x}" y2="${to.y}" stroke="#94a3b8" stroke-width="1.4" />`;
-  }).join("");
-
-  const nodeHtml = [...posMap.values()].map(item => `
-    <div class="bs-kg-node" style="left:${item.x}px;top:${item.y}px" title="${escapeHTML(item.label)}">
-      ${escapeHTML(item.label)}
-    </div>
-  `).join("");
-
-  const edgeList = edges.map(edge => {
-    const source = posMap.get(String(edge.source || ""))?.label || edge.source || "?";
-    const target = posMap.get(String(edge.target || ""))?.label || edge.target || "?";
-    return `<div class="bs-kg-edge-item">${escapeHTML(source)} <span>→ ${escapeHTML(edge.relation || "关联")} →</span> ${escapeHTML(target)}</div>`;
-  }).join("");
-
   return `
-    <div class="bs-kg-wrap">
-      <div class="bs-kg-canvas">
-        <svg viewBox="0 0 ${width} ${height}" preserveAspectRatio="xMidYMid meet">
-          ${lineSvg}
-        </svg>
-        ${nodeHtml}
-      </div>
-      <div class="bs-kg-edge-list">
-        ${edgeList || '<div class="bs-kg-edge-item">暂无关系信息</div>'}
-      </div>
+    <div class="bs-flow-wrap">
+      <img class="bs-uml-preview" alt="核心思想流程图" />
+      <pre class="bs-uml-fallback">${escapeHTML(cleanUml)}</pre>
     </div>
   `;
+}
+
+function encodeMermaid(code) {
+  const utf8 = encodeURIComponent(code).replace(/%([0-9A-F]{2})/g, (_, p1) =>
+    String.fromCharCode(parseInt(p1, 16))
+  );
+  return btoa(utf8).replaceAll("+", "-").replaceAll("/", "_");
 }
 
 function initResize(panel, handle) {

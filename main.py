@@ -25,16 +25,11 @@ app.add_middleware(
 class SummarizeRequest(BaseModel):
     bvid: str
     sessdata: str = ""
-    style: str = "专业"
     force_refresh: bool = False
 
 
-# 临时内存缓存：key = bvid + style
+# 临时内存缓存：key = bvid
 _summary_cache: dict[str, dict] = {}
-
-
-def _cache_key(bvid: str, style: str) -> str:
-    return f"{bvid}::{style.strip() or '专业'}"
 
 
 def _clear_expired_cache() -> None:
@@ -52,13 +47,12 @@ def _clear_expired_cache() -> None:
 @app.post("/summarize")
 async def summarize_video(req: SummarizeRequest):
     sessdata = req.sessdata or SESSDATA
-    style = (req.style or "专业").strip()
 
     if not sessdata:
         raise HTTPException(400, "需要 B 站登录态 SESSDATA")
 
     _clear_expired_cache()
-    key = _cache_key(req.bvid, style)
+    key = req.bvid
 
     if not req.force_refresh and key in _summary_cache:
         cached = _summary_cache[key]["data"].copy()
@@ -70,10 +64,9 @@ async def summarize_video(req: SummarizeRequest):
     if not subtitle_text:
         raise HTTPException(422, f"视频《{info['title']}》没有找到字幕，暂不支持")
 
-    result = summarize(info["title"], subtitle_text, style=style)
+    result = summarize(info["title"], subtitle_text)
     result["title"] = info["title"]
     result["bvid"] = req.bvid
-    result["style"] = style
     result["cached"] = False
 
     _summary_cache[key] = {

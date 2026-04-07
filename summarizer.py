@@ -13,13 +13,11 @@ client = OpenAI(
 
 SUMMARY_PROMPT = """你是一个视频内容分析助手。我会给你一段带时间戳的字幕内容，请分析后输出 JSON。
 
-输出风格：{style}
-
 要求：
 1. summary：3~5 个要点，每条 15 字以内
 2. chapters：关键章节列表，包含标题、开始秒数、一句话描述
 3. one_line：整段视频的一句话总结（20 字以内）
-4. knowledge_graph：提炼视频知识图谱，节点 4~8 个、关系 4~10 条
+4. flowchart_uml：输出 Mermaid flowchart 语法，提炼视频核心思想流转过程（6~12 个节点）
 
 只输出 JSON，不要输出任何其他内容，格式如下：
 {{
@@ -28,22 +26,21 @@ SUMMARY_PROMPT = """你是一个视频内容分析助手。我会给你一段带
   "chapters": [
     {{"title": "章节名", "seconds": 0, "desc": "简介"}}
   ],
-  "knowledge_graph": {{
-    "nodes": [
-      {{"id": "n1", "label": "概念A", "type": "concept"}}
-    ],
-    "edges": [
-      {{"source": "n1", "target": "n2", "relation": "影响"}}
-    ]
-  }}
+  "flowchart_uml": "flowchart TD\\n  A[核心问题] --> B[关键观点]"
 }}
+
+Mermaid 约束：
+- 仅使用 `flowchart TD`
+- 节点文案尽量短（2~10 字）
+- 关系箭头统一使用 `-->`
 
 视频标题：{title}
 字幕内容：
 {subtitle}
 """
 
-def summarize(title: str, subtitle_text: str, style: str = "专业") -> dict:
+
+def summarize(title: str, subtitle_text: str) -> dict:
     subtitle_trimmed = subtitle_text[:12000]
 
     resp = client.chat.completions.create(
@@ -58,7 +55,6 @@ def summarize(title: str, subtitle_text: str, style: str = "专业") -> dict:
                 "content": SUMMARY_PROMPT.format(
                     title=title,
                     subtitle=subtitle_trimmed,
-                    style=style,
                 )
             }
         ],
@@ -68,7 +64,6 @@ def summarize(title: str, subtitle_text: str, style: str = "专业") -> dict:
     raw = resp.choices[0].message.content.strip()
     print(f"模型原始输出：\n{raw}\n")
 
-    # 去掉模型有时会加的 ```json ``` 包裹
     raw = re.sub(r"^```json\s*", "", raw)
     raw = re.sub(r"\s*```$", "", raw)
 
@@ -83,7 +78,12 @@ def summarize(title: str, subtitle_text: str, style: str = "专业") -> dict:
     data.setdefault("one_line", "")
     data.setdefault("summary", [])
     data.setdefault("chapters", [])
-    knowledge_graph = data.setdefault("knowledge_graph", {})
-    knowledge_graph.setdefault("nodes", [])
-    knowledge_graph.setdefault("edges", [])
+
+    flowchart_uml = str(data.get("flowchart_uml") or "").strip()
+    if not flowchart_uml:
+        flowchart_uml = "flowchart TD\n  A[视频主题] --> B[核心观点]\n  B --> C[关键结论]"
+    if not flowchart_uml.startswith("flowchart TD"):
+        flowchart_uml = "flowchart TD\n  A[视频主题] --> B[核心观点]\n  B --> C[关键结论]"
+    data["flowchart_uml"] = flowchart_uml
+
     return data
