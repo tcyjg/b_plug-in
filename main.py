@@ -8,6 +8,8 @@ import os
 from subtitle import get_subtitle_text
 from summarizer import summarize, generate_content_report
 from image_host import upload_base64_image
+from github_push import push_markdown
+from video_capture import capture_frames
 
 load_dotenv()
 SESSDATA = os.getenv("BILIBILI_SESSDATA", "")
@@ -134,6 +136,41 @@ async def upload_image(req: UploadImageRequest):
         return {"url": url}
     except Exception as e:
         raise HTTPException(500, f"图片上传失败: {e}")
+
+
+class PushReportRequest(BaseModel):
+    filename: str
+    content: str
+    message: str = ""
+
+
+class CaptureFramesRequest(BaseModel):
+    bvid: str
+    sessdata: str = ""
+    timestamps: list[int]
+
+
+@app.post("/capture-frames")
+async def capture_frames_endpoint(req: CaptureFramesRequest):
+    """从视频流截取关键帧并上传图床，返回 { timestamp: url }"""
+    sessdata = req.sessdata or SESSDATA
+    if not sessdata:
+        raise HTTPException(400, "需要 B 站登录态 SESSDATA")
+    try:
+        result = await capture_frames(req.bvid, sessdata, req.timestamps)
+        return {"frames": {str(k): v for k, v in result.items()}}
+    except Exception as e:
+        raise HTTPException(500, f"截图失败: {e}")
+
+
+@app.post("/push-report")
+async def push_report(req: PushReportRequest):
+    """推送 Markdown 报告到 GitHub 仓库"""
+    try:
+        url = await push_markdown(req.filename, req.content, req.message)
+        return {"url": url}
+    except Exception as e:
+        raise HTTPException(500, f"GitHub 推送失败: {e}")
 
 
 @app.get("/health")

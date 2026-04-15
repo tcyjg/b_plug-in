@@ -371,3 +371,46 @@ body.bs-resizing * {
   color: #047857;
   text-align: center;
 }
+
+/* MD 报告选择操作 */
+.bs-md-actions {
+  text-align: center;
+}
+
+.bs-md-ready {
+  font-size: 13px;
+  color: #334155;
+  margin-bottom: 12px;
+}
+
+.bs-md-btn-group {
+  display: flex;
+  gap: 10px;
+  justify-content: center;
+}
+
+.bs-md-action-btn {
+  border: none;
+  border-radius: 8px;
+  padding: 10px 16px;
+  font-size: 13px;
+  cursor: pointer;
+  font-weight: 600;
+  transition: opacity 0.15s ease;
+  flex: 1;
+  max-width: 160px;
+}
+
+.bs-md-action-btn:hover {
+  opacity: 0.88;
+}
+
+.bs-github-btn {
+  background: linear-gradient(135deg, #24292e, #444d56);
+  color: #fff;
+}
+
+.bs-local-btn {
+  background: linear-gradient(135deg, #0b7cc1, #0891b2);
+  color: #fff;
+}

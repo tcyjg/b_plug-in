@@ -1,6 +1,6 @@
 # B站视频速览工具
 
-一键总结 B 站视频内容，提取核心要点和关键章节，支持点击时间戳直接跳转视频。
+一键总结 B 站视频内容，提取核心要点和关键章节，支持点击时间戳直接跳转视频。支持生成带截图的 MD 报告并自动推送到 GitHub 仓库。
 
 ---
 
@@ -8,9 +8,11 @@
 
 ```
 b_plug-in/                    # Python 后端
-├── main.py                   # FastAPI 主服务，提供 /summarize 接口
+├── main.py                   # FastAPI 主服务
 ├── subtitle.py               # B站字幕获取逻辑
-├── summarizer.py             # 调用千问 API 进行 AI 总结
+├── summarizer.py             # 千问 API 调用（摘要 + 内容报告）
+├── image_host.py             # imgbb 图床上传
+├── github_push.py            # GitHub 仓库文件推送
 ├── .env                      # 密钥配置（不要上传到 Git）
 └── venv/                     # Python 虚拟环境
 
@@ -28,6 +30,8 @@ bilibili-extension/           # Chrome 插件
 - Conda 或 venv 虚拟环境
 - Chrome 浏览器
 - 千问 API Key（[申请地址](https://dashscope.aliyun.com)）
+- imgbb API Key（[申请地址](https://api.imgbb.com)，免费，用于截图上传）
+- GitHub Personal Access Token（需要 `repo` 权限，用于推送报告）
 - B站账号（用于获取字幕）
 
 ---
@@ -51,14 +55,46 @@ pip install fastapi uvicorn bilibili-api-python openai python-dotenv httpx \
 ```env
 DASHSCOPE_API_KEY=sk-你的千问APIKey
 BILIBILI_SESSDATA=你的B站SESSDATA
+IMGBB_API_KEY=你的imgbb_api_key
+GITHUB_TOKEN=你的github_personal_access_token
+GITHUB_REPO=owner/repo
+GITHUB_PATH=reports
+GITHUB_BRANCH=main
 ```
 
-**如何获取 SESSDATA：**
+#### 获取各密钥的方式
+
+**DASHSCOPE_API_KEY（千问 AI）**
+1. 访问 [通义千问控制台](https://dashscope.aliyun.com)
+2. 开通 DashScope 服务（免费额度可用）
+3. 在 API-KEY 管理中创建并复制 Key
+
+**BILIBILI_SESSDATA（B站登录态）**
 1. 浏览器登录 bilibili.com
 2. F12 → Application → Cookies → `https://www.bilibili.com`
-3. 找到 `SESSDATA`，复制其 Value 粘贴到上面
+3. 找到 `SESSDATA`，复制其 Value 粘贴到 `.env`
 
 > ⚠️ SESSDATA 约 30 天过期，过期后重新复制更新 `.env` 即可，无需重启服务。
+
+**IMGBB_API_KEY（图床）**
+1. 访问 [imgbb API](https://api.imgbb.com/)
+2. 注册账号并获取免费 API Key
+3. 填入 `.env` 的 `IMGBB_API_KEY`
+
+**GITHUB_TOKEN（GitHub 推送）**
+1. 访问 GitHub → Settings → Developer settings → [Personal access tokens](https://github.com/settings/tokens) → Tokens (classic)
+2. 点击 "Generate new token"
+3. 勾选 `repo` 权限（完整的仓库访问）
+4. 生成并复制 Token 到 `.env` 的 `GITHUB_TOKEN`
+
+**GITHUB_REPO（目标仓库）**
+- 格式为 `owner/repo`，例如 `zhangsan/video-reports`
+- 需要是一个你已存在的仓库，且 Token 有写入权限
+
+**GITHUB_PATH（目标文件夹）**
+- 报告存放的目录路径，例如 `reports`
+- 不需要提前在仓库中创建，首次推送时会自动建立
+- 同名文件不会覆盖，自动加数字后缀（如 `视频标题_1.md`）
 
 ### 3. 启动后端
 
@@ -80,13 +116,15 @@ INFO: Uvicorn running on http://127.0.0.1:8000
 3. 点击**加载已解压的扩展程序**
 4. 选择 `bilibili-extension/` 文件夹
 
+> 修改插件代码后，回到 `chrome://extensions/` 点击扩展卡片上的刷新按钮，然后刷新 B 站页面即可。
+
 ### 5. 使用
 
-打开任意 B 站视频页面，点击右侧蓝色「**速览**」按钮，等待 5~15 秒即可看到：
+打开任意 B 站视频页面，点击右侧蓝色「**AI速览**」按钮：
 
-- 一句话总结
-- 3~5 条核心要点
-- 关键章节列表（点击可直接跳转视频）
+- **解析当前视频**：生成一句话总结、核心要点、章节跳转、核心思想流程图
+- **重新解析**：强制刷新，忽略缓存重新分析
+- **生成MD报告**：AI 生成详细内容报告，自动截取关键帧画面，上传图床后推送到 GitHub 仓库
 
 ---
 
@@ -97,8 +135,10 @@ INFO: Uvicorn running on http://127.0.0.1:8000
 | 接口 | 方法 | 说明 |
 |------|------|------|
 | `/summarize` | POST | 传入 bvid，返回摘要和章节 |
+| `/report` | POST | 传入 bvid，返回详细内容报告（含关键帧时间点） |
+| `/upload-image` | POST | 上传 base64 截图到 imgbb 图床，返回图片 URL |
+| `/push-report` | POST | 推送 Markdown 报告到 GitHub 仓库 |
 | `/health` | GET | 检查服务是否正常运行 |
-| `/check` | GET | 检查 SESSDATA 是否有效 |
 
 **请求示例：**
 
@@ -106,21 +146,6 @@ INFO: Uvicorn running on http://127.0.0.1:8000
 curl -X POST http://127.0.0.1:8000/summarize \
   -H "Content-Type: application/json" \
   -d '{"bvid": "BV1XLcfzgES5"}'
-```
-
-**返回示例：**
-
-```json
-{
-  "one_line": "大学生低成本生活全攻略",
-  "summary": ["外卖用淘金币返现", "出行靠支付宝领券", "购物善用拼多多"],
-  "chapters": [
-    {"title": "开场介绍", "seconds": 0, "desc": "作者介绍省钱成果"},
-    {"title": "吃饭省钱技巧", "seconds": 39, "desc": "外卖平台比价方法"}
-  ],
-  "title": "视频标题",
-  "bvid": "BV1XLcfzgES5"
-}
 ```
 
 ---
@@ -134,6 +159,8 @@ curl -X POST http://127.0.0.1:8000/summarize \
 | 插件不出现 | URL 格式不匹配 | 确认地址栏为 `bilibili.com/video/BVxxx` |
 | 后端连不上 | 服务未启动 | 运行 `uvicorn main:app --port 8000` |
 | JSON 解析报错 | 模型输出格式异常 | 查看终端日志，确认模型原始输出 |
+| 图床上传失败 | IMGBB_API_KEY 未配置 | 检查 `.env` 中 `IMGBB_API_KEY` 是否正确 |
+| GitHub 推送失败 | Token 权限不足或仓库不存在 | 确认 Token 有 `repo` 权限，仓库地址格式正确 |
 
 ---
 
@@ -213,6 +240,8 @@ const API_BASE = "http://你的服务器IP:8000";
 | 后端框架 | FastAPI + Uvicorn |
 | 字幕获取 | bilibili-api-python |
 | AI 总结 | 通义千问 qwen-plus |
+| 图床 | imgbb API |
+| 报告存储 | GitHub Contents API |
 | 浏览器插件 | Chrome Manifest V3 |
 
 ---
@@ -222,3 +251,4 @@ const API_BASE = "http://你的服务器IP:8000";
 - `.env` 文件包含密钥，**不要提交到 Git**，确保 `.gitignore` 中包含 `.env`
 - 本工具仅供个人学习使用，请遵守 B 站用户协议
 - SESSDATA 约每 30 天过期，更新后无需重启服务
+- GitHub 推送同名文件不会覆盖，自动加数字后缀（`_1`, `_2`, ...）

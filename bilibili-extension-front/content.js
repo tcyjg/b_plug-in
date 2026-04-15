@@ -120,6 +120,8 @@ function renderWelcome() {
 
 // ========== MD 报告生成 ==========
 
+let reportCache = null; // { md, filename, reportData }
+
 async function generateMDReport() {
   if (loading) return;
 
@@ -132,24 +134,27 @@ async function generateMDReport() {
   loading = true;
   const body = document.getElementById("bs-body");
 
-  // 保留当前内容，在底部显示进度
-  let progressEl = document.getElementById("bs-md-progress");
-  if (!progressEl) {
-    progressEl = document.createElement("div");
-    progressEl.id = "bs-md-progress";
-    progressEl.className = "bs-md-progress";
-    body.appendChild(progressEl);
-  }
-  progressEl.innerHTML = `
-    <div class="bs-loading">
-      <div class="bs-spinner"></div>
-      <span>正在生成内容报告...</span>
-      <span style="font-size:11px;color:#9ca3af">AI 分析 + 截图中，请稍候</span>
-    </div>
-  `;
+  // 移除旧的进度/选择面板
+  const old = document.getElementById("bs-md-progress");
+  if (old) old.remove();
+
+  let progressEl = document.createElement("div");
+  progressEl.id = "bs-md-progress";
+  progressEl.className = "bs-md-progress";
+  body.appendChild(progressEl);
 
   try {
     const sessdata = getCookie("SESSDATA") || "";
+
+    // 1. 获取 AI 内容报告
+    progressEl.innerHTML = `
+      <div class="bs-loading">
+        <div class="bs-spinner"></div>
+        <span>正在生成内容报告...</span>
+        <span style="font-size:11px;color:#9ca3af">AI 分析中，请稍候</span>
+      </div>
+    `;
+
     const resp = await fetch(`${API_BASE}/report`, {
       method: "POST",
       headers: { "Content-Type": "application/json" },
@@ -163,7 +168,7 @@ async function generateMDReport() {
 
     const reportData = await resp.json();
 
-    // 收集需要截图的关键帧时间点
+    // 2. 收集关键帧时间点，后端截帧
     const keyframes = (reportData.sections || []).filter(s => s.is_keyframe);
     const frameMap = {};
 
@@ -171,88 +176,94 @@ async function generateMDReport() {
       progressEl.innerHTML = `
         <div class="bs-loading">
           <div class="bs-spinner"></div>
-          <span>正在截取关键画面 (${keyframes.length} 张)...</span>
+          <span>正在截取关键画面并上传 (${keyframes.length} 张)...</span>
         </div>
       `;
-      const videoEl = document.querySelector("video");
-      if (videoEl) {
-        for (const kf of keyframes) {
-          try {
-            const dataUrl = await captureFrame(videoEl, kf.timestamp);
-            // 上传到图床
-            progressEl.innerHTML = `
-              <div class="bs-loading">
-                <div class="bs-spinner"></div>
-                <span>正在上传截图... (${Object.keys(frameMap).length + 1}/${keyframes.length})</span>
-              </div>
-            `;
-            const imageUrl = await uploadImage(dataUrl);
-            frameMap[kf.timestamp] = imageUrl;
-          } catch (e) {
-            console.warn(`截图/上传失败 (timestamp=${kf.timestamp}):`, e);
-          }
-        }
+
+      const timestamps = keyframes.map(kf => Math.floor(kf.timestamp));
+      const framesResp = await fetch(`${API_BASE}/capture-frames`, {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ bvid, sessdata, timestamps }),
+      });
+
+      if (framesResp.ok) {
+        const framesData = await framesResp.json();
+        Object.assign(frameMap, framesData.frames || {});
+      } else {
+        console.warn("后端截帧失败，报告将不含截图");
       }
     }
 
-    // 生成 Markdown 并下载
+    // 3. 生成 Markdown
     const md = buildMarkdown(reportData, frameMap);
-    downloadMarkdown(md, `${sanitizeFilename(reportData.title || bvid)}_报告.md`);
+    const filename = `${sanitizeFilename(reportData.title || bvid)}.md`;
+    reportCache = { md, filename, reportData };
 
-    progressEl.innerHTML = `<div class="bs-md-success">报告已生成并下载！</div>`;
-    setTimeout(() => {
-      const p = document.getElementById("bs-md-progress");
-      if (p) p.remove();
-    }, 3000);
+    // 4. 显示选择按钮
+    progressEl.innerHTML = `
+      <div class="bs-md-actions">
+        <div class="bs-md-ready">报告已生成，请选择保存方式：</div>
+        <div class="bs-md-btn-group">
+          <button class="bs-md-action-btn bs-github-btn" id="bs-gh-btn">推送到 GitHub</button>
+          <button class="bs-md-action-btn bs-local-btn" id="bs-dl-btn">下载到本地</button>
+        </div>
+      </div>
+    `;
+
+    document.getElementById("bs-gh-btn").addEventListener("click", () => onPushGithub(progressEl));
+    document.getElementById("bs-dl-btn").addEventListener("click", () => onDownloadLocal(progressEl));
 
   } catch (e) {
     progressEl.innerHTML = `<div class="bs-error">报告生成失败：${escapeHTML(e.message)}</div>`;
+    loading = false;
   } finally {
     loading = false;
   }
 }
 
-function captureFrame(videoEl, timestamp) {
-  return new Promise((resolve, reject) => {
-    const canvas = document.createElement("canvas");
-    const ctx = canvas.getContext("2d");
-
-    const onSeeked = () => {
-      videoEl.removeEventListener("seeked", onSeeked);
-      try {
-        canvas.width = videoEl.videoWidth || 640;
-        canvas.height = videoEl.videoHeight || 360;
-        ctx.drawImage(videoEl, 0, 0, canvas.width, canvas.height);
-        const dataUrl = canvas.toDataURL("image/jpeg", 0.85);
-        resolve(dataUrl);
-      } catch (e) {
-        reject(e);
-      }
-    };
-
-    videoEl.addEventListener("seeked", onSeeked);
-    videoEl.currentTime = timestamp;
-
-    // 超时保护
-    setTimeout(() => {
-      videoEl.removeEventListener("seeked", onSeeked);
-      reject(new Error("截图超时"));
-    }, 5000);
-  });
+async function onPushGithub(progressEl) {
+  if (!reportCache) return;
+  progressEl.innerHTML = `
+    <div class="bs-loading">
+      <div class="bs-spinner"></div>
+      <span>正在推送到 GitHub...</span>
+    </div>
+  `;
+  try {
+    const result = await pushToGithub(reportCache.filename, reportCache.md);
+    progressEl.innerHTML = `
+      <div class="bs-md-success">
+        报告已推送到 GitHub！<br>
+        <a href="${escapeHTML(result.url)}" target="_blank" style="color:#0369a1;word-break:break-all;">${escapeHTML(result.url)}</a>
+      </div>
+    `;
+  } catch (e) {
+    progressEl.innerHTML = `<div class="bs-error">推送失败：${escapeHTML(e.message)}</div>`;
+  }
 }
 
-async function uploadImage(base64Data) {
-  const resp = await fetch(`${API_BASE}/upload-image`, {
+function onDownloadLocal(progressEl) {
+  if (!reportCache) return;
+  downloadMarkdown(reportCache.md, reportCache.filename);
+  progressEl.innerHTML = `<div class="bs-md-success">报告已下载到本地！</div>`;
+  setTimeout(() => {
+    const p = document.getElementById("bs-md-progress");
+    if (p) p.remove();
+  }, 3000);
+}
+
+async function pushToGithub(filename, content) {
+  const resp = await fetch(`${API_BASE}/push-report`, {
     method: "POST",
     headers: { "Content-Type": "application/json" },
-    body: JSON.stringify({ image: base64Data }),
+    body: JSON.stringify({ filename, content }),
   });
   if (!resp.ok) {
-    const err = await resp.json().catch(() => ({ detail: "上传失败" }));
-    throw new Error(err.detail || `上传失败 HTTP ${resp.status}`);
+    const err = await resp.json().catch(() => ({ detail: "推送失败" }));
+    throw new Error(err.detail || `推送失败 HTTP ${resp.status}`);
   }
-  const data = await resp.json();
-  return data.url;
+  return await resp.json();
 }
 
 function buildMarkdown(reportData, frameMap) {
