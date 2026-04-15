@@ -4,7 +4,8 @@
       "Bash(xxd \"D:/code/py_code/b_plug-in/bilibili-extension/content.js\")",
       "Bash(node:*)",
       "Bash(python3:*)",
-      "Bash(python test_github.py)"
+      "Bash(python test_github.py)",
+      "Bash(pip show:*)"
     ]
   }
 }
