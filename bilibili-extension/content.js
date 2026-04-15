@@ -107,13 +107,13 @@ async function onParse(forceRefresh) {
 }
 
 function renderWelcome() {
-  const body = document.getElementById(“bs-body”);
+  const body = document.getElementById("bs-body");
   if (!body) return;
   body.innerHTML = `
-    <div class=”bs-empty”>
-      <div class=”bs-empty-title”>准备就绪</div>
-      <div class=”bs-empty-desc”>点击上方”解析当前视频”开始生成总结。</div>
-      <div class=”bs-empty-desc”>支持后端缓存和核心思想流程图。</div>
+    <div class="bs-empty">
+      <div class="bs-empty-title">准备就绪</div>
+      <div class="bs-empty-desc">点击上方"解析当前视频"开始生成总结。</div>
+      <div class="bs-empty-desc">支持后端缓存和核心思想流程图。</div>
     </div>
   `;
 }
@@ -125,39 +125,39 @@ async function generateMDReport() {
 
   const bvid = getBvid();
   if (!bvid) {
-    renderError(“无法识别视频ID”);
+    renderError("无法识别视频ID");
     return;
   }
 
   loading = true;
-  const body = document.getElementById(“bs-body”);
+  const body = document.getElementById("bs-body");
 
   // 保留当前内容，在底部显示进度
-  let progressEl = document.getElementById(“bs-md-progress”);
+  let progressEl = document.getElementById("bs-md-progress");
   if (!progressEl) {
-    progressEl = document.createElement(“div”);
-    progressEl.id = “bs-md-progress”;
-    progressEl.className = “bs-md-progress”;
+    progressEl = document.createElement("div");
+    progressEl.id = "bs-md-progress";
+    progressEl.className = "bs-md-progress";
     body.appendChild(progressEl);
   }
   progressEl.innerHTML = `
-    <div class=”bs-loading”>
-      <div class=”bs-spinner”></div>
+    <div class="bs-loading">
+      <div class="bs-spinner"></div>
       <span>正在生成内容报告...</span>
-      <span style=”font-size:11px;color:#9ca3af”>AI 分析 + 截图中，请稍候</span>
+      <span style="font-size:11px;color:#9ca3af">AI 分析 + 截图中，请稍候</span>
     </div>
   `;
 
   try {
-    const sessdata = getCookie(“SESSDATA”) || “”;
+    const sessdata = getCookie("SESSDATA") || "";
     const resp = await fetch(`${API_BASE}/report`, {
-      method: “POST”,
-      headers: { “Content-Type”: “application/json” },
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
       body: JSON.stringify({ bvid, sessdata, force_refresh: false }),
     });
 
     if (!resp.ok) {
-      const err = await resp.json().catch(() => ({ detail: “请求失败” }));
+      const err = await resp.json().catch(() => ({ detail: "请求失败" }));
       throw new Error(err.detail || `HTTP ${resp.status}`);
     }
 
@@ -169,19 +169,27 @@ async function generateMDReport() {
 
     if (keyframes.length > 0) {
       progressEl.innerHTML = `
-        <div class=”bs-loading”>
-          <div class=”bs-spinner”></div>
+        <div class="bs-loading">
+          <div class="bs-spinner"></div>
           <span>正在截取关键画面 (${keyframes.length} 张)...</span>
         </div>
       `;
-      const videoEl = document.querySelector(“video”);
+      const videoEl = document.querySelector("video");
       if (videoEl) {
         for (const kf of keyframes) {
           try {
             const dataUrl = await captureFrame(videoEl, kf.timestamp);
-            frameMap[kf.timestamp] = dataUrl;
+            // 上传到图床
+            progressEl.innerHTML = `
+              <div class="bs-loading">
+                <div class="bs-spinner"></div>
+                <span>正在上传截图... (${Object.keys(frameMap).length + 1}/${keyframes.length})</span>
+              </div>
+            `;
+            const imageUrl = await uploadImage(dataUrl);
+            frameMap[kf.timestamp] = imageUrl;
           } catch (e) {
-            console.warn(`截图失败 (timestamp=${kf.timestamp}):`, e);
+            console.warn(`截图/上传失败 (timestamp=${kf.timestamp}):`, e);
           }
         }
       }
@@ -191,14 +199,14 @@ async function generateMDReport() {
     const md = buildMarkdown(reportData, frameMap);
     downloadMarkdown(md, `${sanitizeFilename(reportData.title || bvid)}_报告.md`);
 
-    progressEl.innerHTML = `<div class=”bs-md-success”>报告已生成并下载！</div>`;
+    progressEl.innerHTML = `<div class="bs-md-success">报告已生成并下载！</div>`;
     setTimeout(() => {
-      const p = document.getElementById(“bs-md-progress”);
+      const p = document.getElementById("bs-md-progress");
       if (p) p.remove();
     }, 3000);
 
   } catch (e) {
-    progressEl.innerHTML = `<div class=”bs-error”>报告生成失败：${escapeHTML(e.message)}</div>`;
+    progressEl.innerHTML = `<div class="bs-error">报告生成失败：${escapeHTML(e.message)}</div>`;
   } finally {
     loading = false;
   }
@@ -206,45 +214,59 @@ async function generateMDReport() {
 
 function captureFrame(videoEl, timestamp) {
   return new Promise((resolve, reject) => {
-    const canvas = document.createElement(“canvas”);
-    const ctx = canvas.getContext(“2d”);
+    const canvas = document.createElement("canvas");
+    const ctx = canvas.getContext("2d");
 
     const onSeeked = () => {
-      videoEl.removeEventListener(“seeked”, onSeeked);
+      videoEl.removeEventListener("seeked", onSeeked);
       try {
         canvas.width = videoEl.videoWidth || 640;
         canvas.height = videoEl.videoHeight || 360;
         ctx.drawImage(videoEl, 0, 0, canvas.width, canvas.height);
-        const dataUrl = canvas.toDataURL(“image/jpeg”, 0.85);
+        const dataUrl = canvas.toDataURL("image/jpeg", 0.85);
         resolve(dataUrl);
       } catch (e) {
         reject(e);
       }
     };
 
-    videoEl.addEventListener(“seeked”, onSeeked);
+    videoEl.addEventListener("seeked", onSeeked);
     videoEl.currentTime = timestamp;
 
     // 超时保护
     setTimeout(() => {
-      videoEl.removeEventListener(“seeked”, onSeeked);
-      reject(new Error(“截图超时”));
+      videoEl.removeEventListener("seeked", onSeeked);
+      reject(new Error("截图超时"));
     }, 5000);
   });
 }
 
+async function uploadImage(base64Data) {
+  const resp = await fetch(`${API_BASE}/upload-image`, {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify({ image: base64Data }),
+  });
+  if (!resp.ok) {
+    const err = await resp.json().catch(() => ({ detail: "上传失败" }));
+    throw new Error(err.detail || `上传失败 HTTP ${resp.status}`);
+  }
+  const data = await resp.json();
+  return data.url;
+}
+
 function buildMarkdown(reportData, frameMap) {
   const lines = [];
-  const title = reportData.title || “视频报告”;
-  const bvid = reportData.bvid || “”;
+  const title = reportData.title || "视频报告";
+  const bvid = reportData.bvid || "";
 
   lines.push(`# ${title}`);
   lines.push(``);
-  lines.push(`> BV号: ${bvid} | 生成时间: ${new Date().toLocaleString(“zh-CN”)}`);
+  lines.push(`> BV号: ${bvid} | 生成时间: ${new Date().toLocaleString("zh-CN")}`);
   lines.push(``);
   lines.push(`## 内容概述`);
   lines.push(``);
-  lines.push(reportData.overview || “暂无概述”);
+  lines.push(reportData.overview || "暂无概述");
   lines.push(``);
 
   lines.push(`## 内容时间线`);
@@ -252,15 +274,15 @@ function buildMarkdown(reportData, frameMap) {
 
   for (const sec of reportData.sections || []) {
     const time = formatTimeMD(sec.timestamp);
-    lines.push(`### [${time}] ${sec.title || “未命名”}`);
+    lines.push(`### [${time}] ${sec.title || "未命名"}`);
     lines.push(``);
-    lines.push(sec.content || “”);
+    lines.push(sec.content || "");
     lines.push(``);
 
     // 如果有关键帧截图
     const frame = frameMap[sec.timestamp];
     if (frame) {
-      lines.push(`![${sec.title || “截图”}](${frame})`);
+      lines.push(`![${sec.title || "截图"}](${frame})`);
       lines.push(``);
     }
   }
@@ -268,7 +290,7 @@ function buildMarkdown(reportData, frameMap) {
   lines.push(`---`);
   lines.push(`*由 B站视频速览 AI 自动生成*`);
 
-  return lines.join(“\n”);
+  return lines.join("\n");
 }
 
 function formatTimeMD(seconds) {
@@ -277,19 +299,19 @@ function formatTimeMD(seconds) {
   const m = Math.floor((s % 3600) / 60);
   const sec = s % 60;
   if (h > 0) {
-    return `${h}:${m.toString().padStart(2, “0”)}:${sec.toString().padStart(2, “0”)}`;
+    return `${h}:${m.toString().padStart(2, "0")}:${sec.toString().padStart(2, "0")}`;
   }
-  return `${m}:${sec.toString().padStart(2, “0”)}`;
+  return `${m}:${sec.toString().padStart(2, "0")}`;
 }
 
 function sanitizeFilename(name) {
-  return name.replace(/[\\/:*?”<>|]/g, “_”).substring(0, 80);
+  return name.replace(/[\\/:*?"<>|]/g, "_").substring(0, 80);
 }
 
 function downloadMarkdown(content, filename) {
-  const blob = new Blob([content], { type: “text/markdown;charset=utf-8” });
+  const blob = new Blob([content], { type: "text/markdown;charset=utf-8" });
   const url = URL.createObjectURL(blob);
-  const a = document.createElement(“a”);
+  const a = document.createElement("a");
   a.href = url;
   a.download = filename;
   document.body.appendChild(a);

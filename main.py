@@ -7,6 +7,7 @@ import os
 
 from subtitle import get_subtitle_text
 from summarizer import summarize, generate_content_report
+from image_host import upload_base64_image
 
 load_dotenv()
 SESSDATA = os.getenv("BILIBILI_SESSDATA", "")
@@ -119,6 +120,20 @@ async def generate_report(req: ReportRequest):
     }
 
     return result
+
+
+class UploadImageRequest(BaseModel):
+    image: str  # base64 或 data:image/...;base64,...
+
+
+@app.post("/upload-image")
+async def upload_image(req: UploadImageRequest):
+    """上传截图到图床，返回图片 URL"""
+    try:
+        url = await upload_base64_image(req.image)
+        return {"url": url}
+    except Exception as e:
+        raise HTTPException(500, f"图片上传失败: {e}")
 
 
 @app.get("/health")

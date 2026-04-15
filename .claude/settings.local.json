@@ -1,0 +1,9 @@
+{
+  "permissions": {
+    "allow": [
+      "Bash(xxd \"D:/code/py_code/b_plug-in/bilibili-extension/content.js\")",
+      "Bash(node:*)",
+      "Bash(python3:*)"
+    ]
+  }
+}
