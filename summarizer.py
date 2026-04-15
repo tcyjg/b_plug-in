@@ -87,3 +87,76 @@ def summarize(title: str, subtitle_text: str) -> dict:
     data["flowchart_uml"] = flowchart_uml
 
     return data
+
+
+CONTENT_REPORT_PROMPT = """你是一个视频内容分析助手。我会给你一段带时间戳的字幕内容，请生成一份详细的视频内容报告。
+
+要求：
+1. overview：对视频整体内容的详细概述（150~300字）
+2. sections：按时间线划分关键事件/内容段落（6~15个段落），每个段落包含：
+   - timestamp：该段落开始的秒数
+   - title：段落标题（10字以内）
+   - content：段落详细内容描述（30~80字）
+   - is_keyframe：是否为关键画面/转折点/重要内容，标记为true的段落将在报告中配截图（6~8个即可）
+
+只输出 JSON，不要输出任何其他内容，格式如下：
+{{
+  "overview": "视频整体内容概述",
+  "sections": [
+    {{"timestamp": 0, "title": "段落标题", "content": "详细描述", "is_keyframe": true}},
+    {{"timestamp": 30, "title": "段落标题", "content": "详细描述", "is_keyframe": false}}
+  ]
+}}
+
+视频标题：{title}
+字幕内容：
+{subtitle}
+"""
+
+
+def generate_content_report(title: str, subtitle_text: str) -> dict:
+    """生成详细的视频内容报告，包含关键时间点用于截图"""
+    subtitle_trimmed = subtitle_text[:12000]
+
+    resp = client.chat.completions.create(
+        model="qwen-plus",
+        messages=[
+            {
+                "role": "system",
+                "content": "你是视频内容分析助手，只输出合法 JSON，不输出任何其他内容。"
+            },
+            {
+                "role": "user",
+                "content": CONTENT_REPORT_PROMPT.format(
+                    title=title,
+                    subtitle=subtitle_trimmed,
+                )
+            }
+        ],
+        temperature=0.3,
+    )
+
+    raw = resp.choices[0].message.content.strip()
+    print(f"报告模型原始输出：\n{raw}\n")
+
+    raw = re.sub(r"^```json\s*", "", raw)
+    raw = re.sub(r"\s*```$", "", raw)
+
+    try:
+        data = json.loads(raw)
+    except json.JSONDecodeError:
+        matched = re.search(r"\{[\s\S]*\}", raw)
+        if not matched:
+            raise
+        data = json.loads(matched.group(0))
+
+    data.setdefault("overview", "")
+    data.setdefault("sections", [])
+
+    for sec in data["sections"]:
+        sec.setdefault("timestamp", 0)
+        sec.setdefault("title", "")
+        sec.setdefault("content", "")
+        sec.setdefault("is_keyframe", False)
+
+    return data

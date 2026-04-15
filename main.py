@@ -6,7 +6,7 @@ from dotenv import load_dotenv
 import os
 
 from subtitle import get_subtitle_text
-from summarizer import summarize
+from summarizer import summarize, generate_content_report
 
 load_dotenv()
 SESSDATA = os.getenv("BILIBILI_SESSDATA", "")
@@ -70,6 +70,50 @@ async def summarize_video(req: SummarizeRequest):
     result["cached"] = False
 
     _summary_cache[key] = {
+        "data": result,
+        "expire_at": datetime.utcnow() + timedelta(minutes=CACHE_TTL_MINUTES),
+    }
+
+    return result
+
+
+class ReportRequest(BaseModel):
+    bvid: str
+    sessdata: str = ""
+    force_refresh: bool = False
+
+
+# 报告缓存：key = bvid
+_report_cache: dict[str, dict] = {}
+
+
+@app.post("/report")
+async def generate_report(req: ReportRequest):
+    """生成详细的视频内容报告，包含关键时间点"""
+    sessdata = req.sessdata or SESSDATA
+
+    if not sessdata:
+        raise HTTPException(400, "需要 B 站登录态 SESSDATA")
+
+    _clear_expired_cache()
+    key = f"report_{req.bvid}"
+
+    if not req.force_refresh and key in _report_cache:
+        cached = _report_cache[key]["data"].copy()
+        cached["cached"] = True
+        return cached
+
+    subtitle_text, info = await get_subtitle_text(req.bvid, sessdata)
+
+    if not subtitle_text:
+        raise HTTPException(422, f"视频《{info['title']}》没有找到字幕，暂不支持")
+
+    result = generate_content_report(info["title"], subtitle_text)
+    result["title"] = info["title"]
+    result["bvid"] = req.bvid
+    result["cached"] = False
+
+    _report_cache[key] = {
         "data": result,
         "expire_at": datetime.utcnow() + timedelta(minutes=CACHE_TTL_MINUTES),
     }

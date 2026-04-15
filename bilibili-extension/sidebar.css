@@ -332,3 +332,42 @@ body.bs-resizing * {
     width: 0;
   }
 }
+
+/* MD 报告按钮 */
+.bs-md-btn {
+  border: none;
+  border-radius: 8px;
+  padding: 8px 10px;
+  font-size: 12px;
+  cursor: pointer;
+  background: linear-gradient(135deg, #6366f1, #8b5cf6);
+  color: #fff;
+  flex: 1;
+  transition: opacity 0.15s ease;
+}
+
+.bs-md-btn:hover {
+  opacity: 0.88;
+}
+
+/* MD 报告进度提示 */
+.bs-md-progress {
+  margin-top: 16px;
+  border-top: 1px solid #e5e7eb;
+  padding-top: 12px;
+}
+
+.bs-md-progress .bs-loading {
+  height: auto;
+  padding: 12px 0;
+}
+
+.bs-md-success {
+  background: #d1fae5;
+  border: 1px solid #a7f3d0;
+  border-radius: 8px;
+  padding: 10px 12px;
+  font-size: 13px;
+  color: #047857;
+  text-align: center;
+}

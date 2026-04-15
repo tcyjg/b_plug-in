@@ -29,6 +29,7 @@ function injectUI() {
     <div class="bs-controls">
       <button id="bs-parse-btn" class="bs-parse-btn">解析当前视频</button>
       <button id="bs-refresh-btn" class="bs-refresh-btn">重新解析</button>
+      <button id="bs-md-btn" class="bs-md-btn">生成MD报告</button>
     </div>
     <div class="bs-body" id="bs-body"></div>
   `;
@@ -42,6 +43,7 @@ function injectUI() {
 
   document.getElementById("bs-parse-btn").addEventListener("click", () => onParse(false));
   document.getElementById("bs-refresh-btn").addEventListener("click", () => onParse(true));
+  document.getElementById("bs-md-btn").addEventListener("click", () => generateMDReport());
 
   initResize(panel, document.getElementById("bs-resizer"));
   renderWelcome();
@@ -105,15 +107,195 @@ async function onParse(forceRefresh) {
 }
 
 function renderWelcome() {
-  const body = document.getElementById("bs-body");
+  const body = document.getElementById(“bs-body”);
   if (!body) return;
   body.innerHTML = `
-    <div class="bs-empty">
-      <div class="bs-empty-title">准备就绪</div>
-      <div class="bs-empty-desc">点击上方“解析当前视频”开始生成总结。</div>
-      <div class="bs-empty-desc">支持后端缓存和核心思想流程图。</div>
+    <div class=”bs-empty”>
+      <div class=”bs-empty-title”>准备就绪</div>
+      <div class=”bs-empty-desc”>点击上方”解析当前视频”开始生成总结。</div>
+      <div class=”bs-empty-desc”>支持后端缓存和核心思想流程图。</div>
     </div>
   `;
+}
+
+// ========== MD 报告生成 ==========
+
+async function generateMDReport() {
+  if (loading) return;
+
+  const bvid = getBvid();
+  if (!bvid) {
+    renderError(“无法识别视频ID”);
+    return;
+  }
+
+  loading = true;
+  const body = document.getElementById(“bs-body”);
+
+  // 保留当前内容，在底部显示进度
+  let progressEl = document.getElementById(“bs-md-progress”);
+  if (!progressEl) {
+    progressEl = document.createElement(“div”);
+    progressEl.id = “bs-md-progress”;
+    progressEl.className = “bs-md-progress”;
+    body.appendChild(progressEl);
+  }
+  progressEl.innerHTML = `
+    <div class=”bs-loading”>
+      <div class=”bs-spinner”></div>
+      <span>正在生成内容报告...</span>
+      <span style=”font-size:11px;color:#9ca3af”>AI 分析 + 截图中，请稍候</span>
+    </div>
+  `;
+
+  try {
+    const sessdata = getCookie(“SESSDATA”) || “”;
+    const resp = await fetch(`${API_BASE}/report`, {
+      method: “POST”,
+      headers: { “Content-Type”: “application/json” },
+      body: JSON.stringify({ bvid, sessdata, force_refresh: false }),
+    });
+
+    if (!resp.ok) {
+      const err = await resp.json().catch(() => ({ detail: “请求失败” }));
+      throw new Error(err.detail || `HTTP ${resp.status}`);
+    }
+
+    const reportData = await resp.json();
+
+    // 收集需要截图的关键帧时间点
+    const keyframes = (reportData.sections || []).filter(s => s.is_keyframe);
+    const frameMap = {};
+
+    if (keyframes.length > 0) {
+      progressEl.innerHTML = `
+        <div class=”bs-loading”>
+          <div class=”bs-spinner”></div>
+          <span>正在截取关键画面 (${keyframes.length} 张)...</span>
+        </div>
+      `;
+      const videoEl = document.querySelector(“video”);
+      if (videoEl) {
+        for (const kf of keyframes) {
+          try {
+            const dataUrl = await captureFrame(videoEl, kf.timestamp);
+            frameMap[kf.timestamp] = dataUrl;
+          } catch (e) {
+            console.warn(`截图失败 (timestamp=${kf.timestamp}):`, e);
+          }
+        }
+      }
+    }
+
+    // 生成 Markdown 并下载
+    const md = buildMarkdown(reportData, frameMap);
+    downloadMarkdown(md, `${sanitizeFilename(reportData.title || bvid)}_报告.md`);
+
+    progressEl.innerHTML = `<div class=”bs-md-success”>报告已生成并下载！</div>`;
+    setTimeout(() => {
+      const p = document.getElementById(“bs-md-progress”);
+      if (p) p.remove();
+    }, 3000);
+
+  } catch (e) {
+    progressEl.innerHTML = `<div class=”bs-error”>报告生成失败：${escapeHTML(e.message)}</div>`;
+  } finally {
+    loading = false;
+  }
+}
+
+function captureFrame(videoEl, timestamp) {
+  return new Promise((resolve, reject) => {
+    const canvas = document.createElement(“canvas”);
+    const ctx = canvas.getContext(“2d”);
+
+    const onSeeked = () => {
+      videoEl.removeEventListener(“seeked”, onSeeked);
+      try {
+        canvas.width = videoEl.videoWidth || 640;
+        canvas.height = videoEl.videoHeight || 360;
+        ctx.drawImage(videoEl, 0, 0, canvas.width, canvas.height);
+        const dataUrl = canvas.toDataURL(“image/jpeg”, 0.85);
+        resolve(dataUrl);
+      } catch (e) {
+        reject(e);
+      }
+    };
+
+    videoEl.addEventListener(“seeked”, onSeeked);
+    videoEl.currentTime = timestamp;
+
+    // 超时保护
+    setTimeout(() => {
+      videoEl.removeEventListener(“seeked”, onSeeked);
+      reject(new Error(“截图超时”));
+    }, 5000);
+  });
+}
+
+function buildMarkdown(reportData, frameMap) {
+  const lines = [];
+  const title = reportData.title || “视频报告”;
+  const bvid = reportData.bvid || “”;
+
+  lines.push(`# ${title}`);
+  lines.push(``);
+  lines.push(`> BV号: ${bvid} | 生成时间: ${new Date().toLocaleString(“zh-CN”)}`);
+  lines.push(``);
+  lines.push(`## 内容概述`);
+  lines.push(``);
+  lines.push(reportData.overview || “暂无概述”);
+  lines.push(``);
+
+  lines.push(`## 内容时间线`);
+  lines.push(``);
+
+  for (const sec of reportData.sections || []) {
+    const time = formatTimeMD(sec.timestamp);
+    lines.push(`### [${time}] ${sec.title || “未命名”}`);
+    lines.push(``);
+    lines.push(sec.content || “”);
+    lines.push(``);
+
+    // 如果有关键帧截图
+    const frame = frameMap[sec.timestamp];
+    if (frame) {
+      lines.push(`![${sec.title || “截图”}](${frame})`);
+      lines.push(``);
+    }
+  }
+
+  lines.push(`---`);
+  lines.push(`*由 B站视频速览 AI 自动生成*`);
+
+  return lines.join(“\n”);
+}
+
+function formatTimeMD(seconds) {
+  const s = Math.max(0, Math.floor(seconds));
+  const h = Math.floor(s / 3600);
+  const m = Math.floor((s % 3600) / 60);
+  const sec = s % 60;
+  if (h > 0) {
+    return `${h}:${m.toString().padStart(2, “0”)}:${sec.toString().padStart(2, “0”)}`;
+  }
+  return `${m}:${sec.toString().padStart(2, “0”)}`;
+}
+
+function sanitizeFilename(name) {
+  return name.replace(/[\\/:*?”<>|]/g, “_”).substring(0, 80);
+}
+
+function downloadMarkdown(content, filename) {
+  const blob = new Blob([content], { type: “text/markdown;charset=utf-8” });
+  const url = URL.createObjectURL(blob);
+  const a = document.createElement(“a”);
+  a.href = url;
+  a.download = filename;
+  document.body.appendChild(a);
+  a.click();
+  document.body.removeChild(a);
+  URL.revokeObjectURL(url);
 }
 
 function renderError(message) {
