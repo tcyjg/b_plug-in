@@ -84,6 +84,7 @@ GITHUB_BRANCH=main
 **GITHUB_TOKEN（GitHub 推送）**
 1. 访问 GitHub → Settings → Developer settings → [Personal access tokens](https://github.com/settings/tokens) → Tokens (classic)
 2. 点击 "Generate new token"
+3. 保证 contents 有 read and write 权限
 3. 勾选 `repo` 权限（完整的仓库访问）
 4. 生成并复制 Token 到 `.env` 的 `GITHUB_TOKEN`
 

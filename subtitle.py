@@ -1,60 +1,51 @@
-# subtitle.py
-import asyncio
-from bilibili_api import video, Credential
+import httpx
+from bilibili_api import Credential, video
 from bilibili_api.utils import network as bili_network
-import os
 
-# Work around aiohttp/brotli compatibility issues in some environments.
-# Avoid advertising br encoding so upstream will return gzip/deflate payloads.
+# Avoid advertising brotli in environments where aiohttp/brotli is unstable.
 bili_network.HEADERS["Accept-Encoding"] = "gzip, deflate"
 
-async def get_subtitle_text(bvid: str, sessdata: str) -> tuple[str, dict]:
+
+async def get_subtitle_text(bvid: str, sessdata: str, page: int = 1) -> tuple[str | None, dict]:
     """
-    返回 (字幕文本, 视频信息)
-    字幕文本格式：[时间秒数] 内容
+    Return subtitle text plus basic page metadata for the requested BV and page number.
     """
     cred = Credential(sessdata=sessdata)
     v = video.Video(bvid=bvid, credential=cred)
 
-    # 获取视频基本信息
     info = await v.get_info()
-    title = info["title"]
-    duration = info["duration"]
-
-    # 获取视频的 cid（分P视频取第一P）
     pages = await v.get_pages()
-    cid = pages[0]["cid"]
+    if not pages:
+        return None, {"title": info["title"], "duration": info["duration"], "page": page, "cid": None}
 
-    # 尝试获取字幕
+    page_index = min(max(page - 1, 0), len(pages) - 1)
+    current_page = pages[page_index]
+    cid = current_page["cid"]
+    part = (current_page.get("part") or "").strip()
+    title = info["title"]
+    full_title = f"{title} - {part}" if part and part != title else title
+
     try:
         subtitle_info = await v.get_subtitle(cid)
         subtitles = subtitle_info.get("subtitles", [])
-
         if not subtitles:
-            return None, {"title": title, "duration": duration}
+            return None, {"title": full_title, "duration": info["duration"], "page": page_index + 1, "cid": cid}
 
-        # 优先取中文字幕，没有就取第一个
-        target = next(
-            (s for s in subtitles if "zh" in s.get("lan", "")),
-            subtitles[0]
-        )
-
-        # 拉取字幕内容（是个 JSON 文件的 URL）
-        import httpx
+        target = next((item for item in subtitles if "zh" in item.get("lan", "")), subtitles[0])
         url = "https:" + target["subtitle_url"]
-        async with httpx.AsyncClient() as client:
+        async with httpx.AsyncClient(timeout=30) as client:
             resp = await client.get(url)
+            resp.raise_for_status()
             data = resp.json()
 
-        # 拼接成带时间戳的文本
         lines = []
-        for item in data["body"]:
+        for item in data.get("body", []):
             seconds = int(item["from"])
             content = item["content"].strip()
-            lines.append(f"[{seconds}s] {content}")
+            if content:
+                lines.append(f"[{seconds}s] {content}")
 
-        return "\n".join(lines), {"title": title, "duration": duration}
-
-    except Exception as e:
-        print(f"字幕获取失败: {e}")
-        return None, {"title": title, "duration": duration}
+        return "\n".join(lines), {"title": full_title, "duration": info["duration"], "page": page_index + 1, "cid": cid}
+    except Exception as exc:
+        print(f"subtitle fetch failed: {exc}")
+        return None, {"title": full_title, "duration": info["duration"], "page": page_index + 1, "cid": cid}

@@ -89,8 +89,8 @@ def summarize(title: str, subtitle_text: str) -> dict:
     return data
 
 
-CONTENT_REPORT_PROMPT = """你是一个视频内容分析助手。我会给你一段带时间戳的字幕内容，请生成一份详细的视频内容报告。
-
+CONTENT_REPORT_PROMPT = """
+你是一个视频内容分析助手。我会给你一段带时间戳的字幕内容，请生成一份详细的视频内容报告。
 要求：
 1. overview：对视频整体内容的详细概述（150~300字）
 2. sections：按时间线划分关键事件/内容段落（6~15个段落），每个段落包含：

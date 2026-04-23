@@ -1,10 +1,11 @@
+import asyncio
 import base64
 import io
-import asyncio
 
 import av
-from bilibili_api import video, Credential
+from bilibili_api import Credential, video
 from bilibili_api.utils import network as bili_network
+
 from image_host import upload_base64_image
 
 bili_network.HEADERS["Accept-Encoding"] = "gzip, deflate"
@@ -15,56 +16,47 @@ HTTP_HEADERS = (
 )
 
 
-async def _get_stream_url(bvid: str, sessdata: str) -> str:
+async def _get_stream_url(bvid: str, sessdata: str, page: int = 1) -> str:
     cred = Credential(sessdata=sessdata)
     v = video.Video(bvid=bvid, credential=cred)
-    info = await v.get_download_url(0)
+    page_index = max(page - 1, 0)
+    info = await v.get_download_url(page_index)
     video_streams = info.get("dash", {}).get("video", [])
     if not video_streams:
-        raise ValueError("无法获取视频流地址")
+        raise ValueError("No DASH video stream found")
     return video_streams[0]["baseUrl"]
 
 
 def _extract_frames(stream_url: str, timestamps: list[int]) -> dict[int, str]:
-    """同步提取帧，返回 { timestamp: base64_jpeg }"""
-    result = {}
+    result: dict[int, str] = {}
     container = av.open(stream_url, options={"headers": HTTP_HEADERS})
     stream = container.streams.video[0]
 
     for ts in sorted(timestamps):
         try:
-            container.seek(ts * 1_000_000)  # 微秒
+            container.seek(ts * 1_000_000)
             for frame in container.decode(stream):
                 img = frame.to_image()
                 buf = io.BytesIO()
                 img.save(buf, format="JPEG", quality=85)
                 result[ts] = base64.b64encode(buf.getvalue()).decode("utf-8")
                 break
-        except Exception as e:
-            print(f"截帧失败 (ts={ts}): {e}")
+        except Exception as exc:
+            print(f"capture frame failed (ts={ts}): {exc}")
 
     container.close()
     return result
 
 
-async def capture_frames(
-    bvid: str, sessdata: str, timestamps: list[int]
-) -> dict[int, str]:
-    """
-    在指定时间点截取视频帧并上传图床。
-    返回 { timestamp: imgbb_url }
-    """
-    stream_url = await _get_stream_url(bvid, sessdata)
-
-    # PyAV 是同步库，放到线程池执行避免阻塞
+async def capture_frames(bvid: str, sessdata: str, timestamps: list[int], page: int = 1) -> dict[int, str]:
+    stream_url = await _get_stream_url(bvid, sessdata, page)
     frames_b64 = await asyncio.to_thread(_extract_frames, stream_url, timestamps)
 
-    result = {}
+    result: dict[int, str] = {}
     for ts, b64 in frames_b64.items():
         try:
-            url = await upload_base64_image(b64)
-            result[ts] = url
-        except Exception as e:
-            print(f"上传失败 (ts={ts}): {e}")
+            result[ts] = await upload_base64_image(b64)
+        except Exception as exc:
+            print(f"upload frame failed (ts={ts}): {exc}")
 
     return result

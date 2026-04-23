@@ -1,9 +1,13 @@
 import asyncio
+
+from sentry_sdk.utils import now
+
 from github_push import push_markdown
 
+now = now()
 
 async def main():
-    content = "# 测试报告\n\n这是一条来自 B站视频速览工具的测试推送。\n\n> 时间: 测试时间"
+    content = f"# 测试报告\n\n这是一条来自 B站视频速览工具的测试推送。\n\n> 时间: 测试时间{now}"
     print("正在推送测试文件到 GitHub...")
     try:
         url = await push_markdown("test.md", content, "test: 测试 GitHub 推送")
