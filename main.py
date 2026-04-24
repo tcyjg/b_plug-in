@@ -1,21 +1,15 @@
 from datetime import datetime, timedelta
-import os
 
-from dotenv import load_dotenv
 from fastapi import FastAPI, HTTPException
 from fastapi.middleware.cors import CORSMiddleware
 from pydantic import BaseModel, Field
 
+from config_store import get_all_config, get_config, init_db, set_many_config
 from github_push import push_markdown
 from image_host import upload_base64_image
 from subtitle import get_subtitle_text
 from summarizer import generate_content_report, summarize
 from video_capture import capture_frames
-
-load_dotenv()
-
-SESSDATA = os.getenv("BILIBILI_SESSDATA", "")
-CACHE_TTL_MINUTES = int(os.getenv("SUMMARY_CACHE_TTL_MINUTES", "120"))
 
 app = FastAPI(title="Bilibili Video Summary Service")
 
@@ -58,6 +52,10 @@ class CaptureFramesRequest(BaseModel):
     timestamps: list[int]
 
 
+class ConfigUpdateRequest(BaseModel):
+    values: dict[str, str]
+
+
 _summary_cache: dict[str, dict] = {}
 _report_cache: dict[str, dict] = {}
 
@@ -75,7 +73,12 @@ def _clear_expired_cache() -> None:
 
 
 def _resolve_sessdata(sessdata: str) -> str:
-    return sessdata or SESSDATA
+    return sessdata or get_config("BILIBILI_SESSDATA")
+
+
+@app.on_event("startup")
+def startup() -> None:
+    init_db()
 
 
 @app.post("/summarize")
@@ -85,6 +88,7 @@ async def summarize_video(req: SummarizeRequest):
         raise HTTPException(400, "Missing Bilibili SESSDATA")
 
     _clear_expired_cache()
+    cache_ttl = int(get_config("SUMMARY_CACHE_TTL_MINUTES", "120") or "120")
     key = _cache_key("summary", req.bvid, req.page)
     if not req.force_refresh and key in _summary_cache:
         cached = _summary_cache[key]["data"].copy()
@@ -103,7 +107,7 @@ async def summarize_video(req: SummarizeRequest):
 
     _summary_cache[key] = {
         "data": result,
-        "expire_at": datetime.utcnow() + timedelta(minutes=CACHE_TTL_MINUTES),
+        "expire_at": datetime.utcnow() + timedelta(minutes=cache_ttl),
     }
     return result
 
@@ -115,6 +119,7 @@ async def generate_report(req: ReportRequest):
         raise HTTPException(400, "Missing Bilibili SESSDATA")
 
     _clear_expired_cache()
+    cache_ttl = int(get_config("SUMMARY_CACHE_TTL_MINUTES", "120") or "120")
     key = _cache_key("report", req.bvid, req.page)
     if not req.force_refresh and key in _report_cache:
         cached = _report_cache[key]["data"].copy()
@@ -133,7 +138,7 @@ async def generate_report(req: ReportRequest):
 
     _report_cache[key] = {
         "data": result,
-        "expire_at": datetime.utcnow() + timedelta(minutes=CACHE_TTL_MINUTES),
+        "expire_at": datetime.utcnow() + timedelta(minutes=cache_ttl),
     }
     return result
 
@@ -167,6 +172,44 @@ async def push_report(req: PushReportRequest):
         raise HTTPException(500, f"GitHub push failed: {exc}")
 
 
+@app.get("/config")
+def get_config_values():
+    values = get_all_config()
+    masked = {}
+    for key, value in values.items():
+        if "KEY" in key or "TOKEN" in key or "SESSDATA" in key:
+            masked[key] = "***" if value else ""
+        else:
+            masked[key] = value
+    return {"values": masked}
+
+
+@app.post("/config")
+def update_config_values(req: ConfigUpdateRequest):
+    allowed_keys = {
+        "DASHSCOPE_API_KEY",
+        "BILIBILI_SESSDATA",
+        "IMGBB_API_KEY",
+        "GITHUB_TOKEN",
+        "GITHUB_REPO",
+        "GITHUB_PATH",
+        "GITHUB_BRANCH",
+        "SUMMARY_CACHE_TTL_MINUTES",
+        "API_BASE_URL",
+    }
+    invalid = [key for key in req.values if key not in allowed_keys]
+    if invalid:
+        raise HTTPException(400, f"Unsupported config keys: {', '.join(invalid)}")
+
+    set_many_config(req.values)
+    return {"status": "ok"}
+
+
 @app.get("/health")
 def health():
-    return {"status": "ok", "summary_cache_size": len(_summary_cache), "report_cache_size": len(_report_cache)}
+    return {
+        "status": "ok",
+        "summary_cache_size": len(_summary_cache),
+        "report_cache_size": len(_report_cache),
+        "api_base_url": get_config("API_BASE_URL", "http://127.0.0.1:8000"),
+    }

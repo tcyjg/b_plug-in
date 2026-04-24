@@ -1,34 +1,38 @@
-import os
 import base64
+import os
+
 import httpx
-from dotenv import load_dotenv
 
-load_dotenv()
-
-GITHUB_TOKEN = os.getenv("GITHUB_TOKEN", "")
-GITHUB_REPO = os.getenv("GITHUB_REPO", "")  # owner/repo 格式
-GITHUB_PATH = os.getenv("GITHUB_PATH", "reports")  # 目标文件夹
-GITHUB_BRANCH = os.getenv("GITHUB_BRANCH", "main")
+from config_store import get_config
 
 GITHUB_API = "https://api.github.com"
 
 
-def _check_config():
-    if not GITHUB_TOKEN:
-        raise ValueError("未配置 GITHUB_TOKEN，请在 .env 中添加")
-    if not GITHUB_REPO:
-        raise ValueError("未配置 GITHUB_REPO（格式: owner/repo），请在 .env 中添加")
+def _get_github_config() -> tuple[str, str, str, str]:
+    token = get_config("GITHUB_TOKEN")
+    repo = get_config("GITHUB_REPO")
+    path = get_config("GITHUB_PATH", "reports")
+    branch = get_config("GITHUB_BRANCH", "main")
+    if not token:
+        raise ValueError("Missing GITHUB_TOKEN")
+    if not repo:
+        raise ValueError("Missing GITHUB_REPO")
+    return token, repo, path, branch
 
 
-async def _find_available_filename(client, headers, base_name: str, ext: str) -> str:
-    """查找不冲突的文件名，如果已存在则加 _1, _2, ... 后缀"""
-    folder = GITHUB_PATH.rstrip("/")
-
-    # 获取目标目录下所有文件名
+async def _find_available_filename(
+    client: httpx.AsyncClient,
+    headers: dict[str, str],
+    repo: str,
+    folder: str,
+    branch: str,
+    base_name: str,
+    ext: str,
+) -> str:
     resp = await client.get(
-        f"{GITHUB_API}/repos/{GITHUB_REPO}/contents/{folder}",
+        f"{GITHUB_API}/repos/{repo}/contents/{folder}",
         headers=headers,
-        params={"ref": GITHUB_BRANCH},
+        params={"ref": branch},
     )
     existing = set()
     if resp.status_code == 200:
@@ -45,41 +49,29 @@ async def _find_available_filename(client, headers, base_name: str, ext: str) ->
 
 
 async def push_markdown(filename: str, content: str, message: str = "") -> str:
-    """
-    推送 Markdown 文件到 GitHub 仓库指定目录。
-    同名文件自动加数字后缀（_1, _2, ...），不覆盖。
-    返回文件的 GitHub 页面 URL。
-    """
-    _check_config()
-
+    token, repo, folder, branch = _get_github_config()
     base_name, ext = os.path.splitext(filename)
-
     encoded_content = base64.b64encode(content.encode("utf-8")).decode("utf-8")
-
     headers = {
-        "Authorization": f"token {GITHUB_TOKEN}",
+        "Authorization": f"token {token}",
         "Accept": "application/vnd.github.v3+json",
     }
 
     async with httpx.AsyncClient(timeout=30) as client:
-        actual_filename = await _find_available_filename(client, headers, base_name, ext)
-        path = f"{GITHUB_PATH.rstrip('/')}/{actual_filename}"
-
+        actual_filename = await _find_available_filename(client, headers, repo, folder.rstrip("/"), branch, base_name, ext)
+        path = f"{folder.rstrip('/')}/{actual_filename}"
         if not message:
-            message = f"docs: 添加视频报告 {actual_filename}"
+            message = f"docs: add report {actual_filename}"
 
-        url = f"{GITHUB_API}/repos/{GITHUB_REPO}/contents/{path}"
-
-        resp = await client.put(url, headers=headers, json={
-            "message": message,
-            "content": encoded_content,
-            "branch": GITHUB_BRANCH,
-        })
+        resp = await client.put(
+            f"{GITHUB_API}/repos/{repo}/contents/{path}",
+            headers=headers,
+            json={"message": message, "content": encoded_content, "branch": branch},
+        )
         if resp.status_code not in (200, 201):
             detail = resp.json().get("message", resp.text)
-            raise ValueError(f"GitHub 推送失败: {detail}")
-
+            raise ValueError(f"GitHub push failed: {detail}")
         data = resp.json()
 
     html_url = data.get("content", {}).get("html_url", "")
-    return html_url or f"https://github.com/{GITHUB_REPO}/blob/{GITHUB_BRANCH}/{path}"
+    return html_url or f"https://github.com/{repo}/blob/{branch}/{path}"

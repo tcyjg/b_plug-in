@@ -1,13 +1,21 @@
 {
   "manifest_version": 3,
-  "name": "B站视频速览",
-  "version": "1.0",
-  "description": "一键总结B站视频内容",
-  "permissions": ["cookies", "activeTab"],
+  "name": "Bilibili Video Summary",
+  "version": "1.1",
+  "description": "Generate AI video summaries on Bilibili pages.",
+  "permissions": ["cookies", "activeTab", "storage"],
   "host_permissions": [
     "https://*.bilibili.com/*",
-    "http://127.0.0.1:8000/*"
+    "http://*/*",
+    "https://*/*"
   ],
+  "action": {
+    "default_title": "Open settings"
+  },
+  "background": {
+    "service_worker": "background.js"
+  },
+  "options_page": "options.html",
   "content_scripts": [
     {
       "matches": ["https://www.bilibili.com/video/*"],

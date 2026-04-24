@@ -1,4 +1,5 @@
-const API_BASE = "http://127.0.0.1:8000";
+const DEFAULT_API_BASE = "http://127.0.0.1:8000";
+const API_BASE_STORAGE_KEY = "api_base_url";
 
 const INLINE_SUMMARY_ID = "bili-inline-summary";
 const INLINE_SUMMARY_BODY_ID = "bili-inline-summary-body";
@@ -9,6 +10,23 @@ let lastVideoKey = null;
 let cachedReport = null;
 let loading = false;
 let ensureInlineTimer = null;
+
+function getApiBase() {
+  return new Promise((resolve) => {
+    if (!chrome?.storage?.sync) {
+      resolve(DEFAULT_API_BASE);
+      return;
+    }
+    chrome.storage.sync.get({ [API_BASE_STORAGE_KEY]: DEFAULT_API_BASE }, (result) => {
+      resolve(String(result?.[API_BASE_STORAGE_KEY] || DEFAULT_API_BASE));
+    });
+  });
+}
+
+async function apiFetch(path, init) {
+  const apiBase = await getApiBase();
+  return fetch(`${apiBase}${path}`, init);
+}
 
 function injectUI() {
   ensureInlineSummaryShell();
@@ -78,7 +96,7 @@ async function onParse(forceRefresh) {
 
   try {
     const sessdata = getCookie("SESSDATA") || "";
-    const resp = await fetch(`${API_BASE}/report`, {
+    const resp = await apiFetch("/report", {
       method: "POST",
       headers: { "Content-Type": "application/json" },
       body: JSON.stringify({ bvid, page, sessdata, force_refresh: forceRefresh }),
@@ -123,7 +141,7 @@ async function handleMarkdownReport(reportData, forceRefresh) {
     const frameMap = {};
     if (keyframes.length > 0) {
       const timestamps = keyframes.map((section) => Math.floor(Number(section.timestamp) || 0));
-      const framesResp = await fetch(`${API_BASE}/capture-frames`, {
+      const framesResp = await apiFetch("/capture-frames", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({ bvid, page, sessdata, timestamps }),
@@ -137,7 +155,7 @@ async function handleMarkdownReport(reportData, forceRefresh) {
     note.textContent = "正在推送到 GitHub...";
     const filename = `${sanitizeFilename(reportData.title || `${bvid}-P${page}`)}.md`;
     const content = buildMarkdown(reportData, frameMap);
-    const pushResp = await fetch(`${API_BASE}/push-report`, {
+    const pushResp = await apiFetch("/push-report", {
       method: "POST",
       headers: { "Content-Type": "application/json" },
       body: JSON.stringify({ filename, content }),
