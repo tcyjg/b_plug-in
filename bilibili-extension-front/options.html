@@ -1,0 +1,87 @@
+<!doctype html>
+<html lang="zh-CN">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>视频总结设置</title>
+  <link rel="stylesheet" href="options.css">
+</head>
+<body>
+  <main class="page">
+    <section class="card">
+      <div class="eyebrow">EXTENSION SETTINGS</div>
+      <h1>连接与配置</h1>
+      <p class="desc">在这里配置扩展请求的后端地址，以及写入后端 SQLite 的常用配置项。</p>
+
+      <section class="group">
+        <h2>后端连接</h2>
+        <label class="field" for="api-base-url">
+          <span>后端地址</span>
+          <input id="api-base-url" type="url" placeholder="http://127.0.0.1:8000">
+        </label>
+
+        <div class="actions">
+          <button id="test-btn" type="button" class="ghost">测试连接</button>
+          <button id="save-base-btn" type="button">保存后端地址</button>
+          <button id="reset-btn" type="button" class="ghost">恢复默认</button>
+        </div>
+      </section>
+
+      <section class="group">
+        <h2>后端配置</h2>
+        <p class="helper">带“留空则不修改”的字段，在留空时不会覆盖数据库里的现有值。</p>
+
+        <div class="grid">
+          <label class="field" for="dashscope-api-key">
+            <span>DashScope API Key</span>
+            <input id="dashscope-api-key" type="password" placeholder="留空则不修改">
+          </label>
+
+          <label class="field" for="bilibili-sessdata">
+            <span>Bilibili SESSDATA</span>
+            <input id="bilibili-sessdata" type="password" placeholder="留空则不修改">
+          </label>
+
+          <label class="field" for="imgbb-api-key">
+            <span>IMGBB API Key</span>
+            <input id="imgbb-api-key" type="password" placeholder="留空则不修改">
+          </label>
+
+          <label class="field" for="github-token">
+            <span>GitHub Token</span>
+            <input id="github-token" type="password" placeholder="留空则不修改">
+          </label>
+
+          <label class="field" for="github-repo">
+            <span>GitHub Repo</span>
+            <input id="github-repo" type="text" placeholder="owner/repo">
+          </label>
+
+          <label class="field" for="github-path">
+            <span>GitHub Path</span>
+            <input id="github-path" type="text" placeholder="video_summaries">
+          </label>
+
+          <label class="field" for="github-branch">
+            <span>GitHub Branch</span>
+            <input id="github-branch" type="text" placeholder="main">
+          </label>
+
+          <label class="field" for="cache-ttl">
+            <span>缓存分钟数</span>
+            <input id="cache-ttl" type="number" min="1" placeholder="120">
+          </label>
+        </div>
+
+        <div class="actions">
+          <button id="load-config-btn" type="button" class="ghost">从后端读取配置</button>
+          <button id="save-config-btn" type="button">保存到后端</button>
+        </div>
+      </section>
+
+      <div id="status" class="status"></div>
+    </section>
+  </main>
+  <script src="options.js"></script>
+</body>
+</html>

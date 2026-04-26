@@ -1,0 +1,22 @@
+services:
+  bilibili-summary-api:
+    build:
+      context: .
+      dockerfile: Dockerfile
+    container_name: bilibili-summary-api
+    restart: unless-stopped
+    ports:
+      - "8000:8000"
+    env_file:
+      - .env
+    environment:
+      APP_DB_PATH: /app/data/app_data.db
+      API_BASE_URL: ${API_BASE_URL:-http://127.0.0.1:8000}
+    volumes:
+      - ./data:/app/data
+    healthcheck:
+      test: ["CMD", "python", "-c", "import urllib.request; urllib.request.urlopen('http://127.0.0.1:8000/health', timeout=5)"]
+      interval: 30s
+      timeout: 10s
+      retries: 3
+      start_period: 20s
