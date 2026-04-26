@@ -1,19 +1,20 @@
 # Bilibili Video Summary
 
-一个用于 B 站视频内容总结的轻量工具，包含：
+一个用于 B 站视频总结的项目，包含：
 
 - FastAPI 后端
-- Chrome 扩展前端
-- SQLite 持久化配置存储
-- 可选的 GitHub 报告推送
+- Chrome/Edge 扩展前端
+- SQLite 持久化配置
+- 可选的 GitHub 推送和截图上传
 
-当前版本支持：
+## 功能
 
-- 在 B 站视频页评论区上方展示“视频内容总结”
-- 支持合集 / 分 P 视频，按当前 `p` 正确解析
-- 点击分段内容跳转到对应时间点
-- 扩展设置页可配置后端地址
-- 后端配置持久化到 SQLite
+- 解析当前视频页并生成视频概览
+- 支持合集/分 P 视频，按当前 `p` 处理
+- 在评论区上方展示可展开的视频总结
+- 可选自动推送 Markdown 到 GitHub
+- 配置保存在 SQLite，重启后不丢失
+- 扩展内可直接配置后端地址和 API Key
 
 ## 项目结构
 
@@ -27,6 +28,8 @@ b_plug-in/
 ├─ github_push.py
 ├─ video_capture.py
 ├─ requirements.txt
+├─ Dockerfile
+├─ docker-compose.yml
 ├─ .env.example
 └─ bilibili-extension-front/
    ├─ manifest.json
@@ -38,70 +41,36 @@ b_plug-in/
    └─ options.js
 ```
 
-## 运行要求
+## 本地启动
+
+要求：
 
 - Python 3.10+
-- Chrome 或 Edge（支持加载解压扩展）
+- Chrome 或 Edge
 
-## 安装依赖
+安装依赖：
 
 ```bash
 pip install -r requirements.txt
 ```
 
-## 后端配置方式
-
-后端现在支持两种配置来源：
-
-1. `.env` 默认值
-2. SQLite 持久化配置
-
-启动后会自动创建 SQLite 数据库文件：
-
-```text
-app_data.db
-```
-
-数据库里会保存这些配置项：
-
-- `DASHSCOPE_API_KEY`
-- `BILIBILI_SESSDATA`
-- `IMGBB_API_KEY`
-- `GITHUB_TOKEN`
-- `GITHUB_REPO`
-- `GITHUB_PATH`
-- `GITHUB_BRANCH`
-- `SUMMARY_CACHE_TTL_MINUTES`
-- `API_BASE_URL`
-
-## 最简启动方式
-
-先复制环境变量模板：
+复制环境变量模板：
 
 ```bash
-copy .env.example .env
+cp .env.example .env
 ```
 
-然后至少填这两个：
+Windows PowerShell:
+
+```powershell
+Copy-Item .env.example .env
+```
+
+至少配置：
 
 ```env
 DASHSCOPE_API_KEY=
 BILIBILI_SESSDATA=
-```
-
-如果你还要启用 GitHub 推送，再补：
-
-```env
-GITHUB_TOKEN=
-GITHUB_REPO=owner/repo
-GITHUB_PATH=video_summaries
-GITHUB_BRANCH=main
-```
-
-如果你要上传关键帧图片，再补：
-
-```env
-IMGBB_API_KEY=
 ```
 
 启动后端：
@@ -110,17 +79,99 @@ IMGBB_API_KEY=
 uvicorn main:app --host 127.0.0.1 --port 8000
 ```
 
-启动成功后默认地址：
+接口文档：
+
+```text
+http://127.0.0.1:8000/docs
+```
+
+## Docker 部署
+
+这是给别人快速部署最合适的方式。默认做了两件事：
+
+- 容器内运行 FastAPI 服务
+- SQLite 数据库存到宿主机 `./data`，容器重启后不会丢
+
+### 1. 准备环境变量
+
+```bash
+cp .env.example .env
+```
+
+至少填写：
+
+```env
+DASHSCOPE_API_KEY=
+BILIBILI_SESSDATA=
+```
+
+如果要推送 GitHub，再填写：
+
+```env
+GITHUB_TOKEN=
+GITHUB_REPO=owner/repo
+GITHUB_PATH=video_summaries
+GITHUB_BRANCH=main
+```
+
+如果要上传截图，再填写：
+
+```env
+IMGBB_API_KEY=
+```
+
+如果你是部署到服务器，建议把 `API_BASE_URL` 改成你的实际地址，例如：
+
+```env
+API_BASE_URL=https://api.example.com
+```
+
+### 2. 启动服务
+
+```bash
+docker compose up -d --build
+```
+
+查看日志：
+
+```bash
+docker compose logs -f
+```
+
+停止服务：
+
+```bash
+docker compose down
+```
+
+### 3. 数据持久化
+
+`docker-compose.yml` 已经把 SQLite 挂载到：
+
+```text
+./data/app_data.db
+```
+
+也就是说：
+
+- 配置页保存的 API Key 会保留
+- 后端配置会保留
+- 容器重建后数据还在
+
+### 4. 对外访问
+
+默认端口：
 
 ```text
 http://127.0.0.1:8000
 ```
 
-API 文档：
+如果部署在服务器上：
 
-```text
-http://127.0.0.1:8000/docs
-```
+- 把服务器 `8000` 端口放行，或
+- 用 Nginx/Caddy 反向代理到 `8000`
+
+建议正式环境走反向代理和 HTTPS。
 
 ## 扩展安装
 
@@ -133,80 +184,63 @@ http://127.0.0.1:8000/docs
 bilibili-extension-front
 ```
 
-## 配置扩展后端地址
+## 扩展配置
 
-扩展已经内置设置页。
+点击浏览器工具栏里的扩展图标，会直接打开设置页。
 
-打开方式有两种：
+在设置页中可以：
 
-1. 点击浏览器工具栏上的扩展图标，会直接打开设置页
-2. 在扩展详情页点击“扩展选项”
+- 配置后端地址
+- 测试后端连接
+- 读取后端当前配置
+- 保存 API Key / Token / Repo 等配置到 SQLite
 
-然后填写后端地址，例如：
+常见后端地址示例：
 
 ```text
 http://127.0.0.1:8000
 ```
 
-或：
-
 ```text
 https://api.example.com
 ```
 
-保存后，刷新 B 站视频页即可生效。
+## SQLite 配置持久化
 
-## 推荐部署方式
+后端提供：
 
-如果是给别人使用，推荐采用：
+- `GET /config`
+- `POST /config`
+- `GET /health`
 
-- 每个人本地运行一个后端
-- 扩展里填自己的后端地址
+配置优先级：
 
-原因：
+1. SQLite 中的值
+2. `.env` 默认值
 
-- 用户自己的 `SESSDATA` 不需要发给公共服务器
-- 更安全
-- 也更容易排查问题
+默认数据库文件：
 
-如果你要做服务器部署，推荐：
-
-- 一台轻量 Linux 服务器
-- 反向代理到 FastAPI
-- 用户在扩展设置页填写你的 API 域名
-
-## SQLite 配置管理接口
-
-获取当前配置：
-
-```http
-GET /config
+```text
+app_data.db
 ```
 
-更新配置：
+Docker 部署时默认是：
 
-```http
-POST /config
-Content-Type: application/json
+```text
+/app/data/app_data.db
 ```
 
-请求体示例：
+当前持久化的配置包括：
 
-```json
-{
-  "values": {
-    "DASHSCOPE_API_KEY": "your-key",
-    "BILIBILI_SESSDATA": "your-sessdata",
-    "API_BASE_URL": "http://127.0.0.1:8000",
-    "GITHUB_REPO": "owner/repo"
-  }
-}
-```
-
-注意：
-
-- 返回的敏感字段会被掩码显示
-- 实际值保存在 `app_data.db`
+- `DASHSCOPE_API_KEY`
+- `BILIBILI_SESSDATA`
+- `IMGBB_API_KEY`
+- `GITHUB_TOKEN`
+- `GITHUB_REPO`
+- `GITHUB_PATH`
+- `GITHUB_BRANCH`
+- `SUMMARY_CACHE_TTL_MINUTES`
+- `API_BASE_URL`
 
 ## 主要接口
 
@@ -219,51 +253,28 @@ Content-Type: application/json
 - `POST /config`
 - `GET /health`
 
-## 当前前端行为
-
-- 在 B 站视频页评论区上方插入总结卡片
-- 点击“总结视频”后生成内容总结
-- “视频中的内容”每个分段可点击跳转
-- 可展开 / 收起总结
-- 可切换是否自动推送 GitHub
-- 如果未开启自动推送，则不会生成 Markdown 上传链路，也不会上传截图
-
 ## 常见问题
 
-### 1. 为什么没有总结内容？
-
-常见原因：
-
-- 当前视频没有字幕
-- `BILIBILI_SESSDATA` 失效
-- 后端没有正常启动
-
-### 2. 为什么合集视频总是解析第一集？
-
-当前版本已经支持按 URL 里的 `p` 参数解析。  
-如果仍然不对，先刷新页面再重新生成。
-
-### 3. 为什么 GitHub 推送失败？
+### 1. 页面内可以总结，但 GitHub 推送失败
 
 检查：
 
 - `GITHUB_TOKEN`
 - `GITHUB_REPO`
-- token 是否有仓库写权限
+- Token 是否有仓库 `Contents` 写权限
 
-### 4. 为什么扩展请求不到后端？
+### 2. 合集视频切换分 P 后总结不对
+
+现在后端和前端都按当前 URL 的 `p` 参数处理。切换分 P 后刷新或重新点击总结即可。
+
+### 3. Docker 启动了，但扩展连不上后端
 
 检查：
 
-- 后端是否已启动
-- 扩展设置页里的后端地址是否正确
-- 修改地址后是否刷新了 B 站视频页
+- 设置页中的后端地址是否正确
+- 服务器防火墙或安全组是否放行 `8000`
+- 如果用了反向代理，扩展里应填代理后的地址
 
-## 后续建议
+### 4. 为什么推荐本地或自部署，而不是公共后端
 
-如果你准备公开给别人使用，下一步建议做：
-
-- `start.bat` 一键启动脚本
-- Docker 部署
-- 扩展设置页增加“测试连接”按钮
-- 后端管理鉴权
+因为这个项目会用到用户自己的 `BILIBILI_SESSDATA`。让用户自己部署后端更稳，也更容易获得信任。
