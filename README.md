@@ -66,7 +66,7 @@ Windows PowerShell:
 Copy-Item .env.example .env
 ```
 
-至少配置：
+至少在.env文件中配置：
 
 ```env
 DASHSCOPE_API_KEY=
@@ -98,7 +98,7 @@ http://127.0.0.1:8000/docs
 cp .env.example .env
 ```
 
-至少填写：
+至少填写（此时也可以不填写，后面前端可以进行修改）：
 
 ```env
 DASHSCOPE_API_KEY=
