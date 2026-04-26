@@ -278,3 +278,10 @@ Docker 部署时默认是：
 ### 4. 为什么推荐本地或自部署，而不是公共后端
 
 因为这个项目会用到用户自己的 `BILIBILI_SESSDATA`。让用户自己部署后端更稳，也更容易获得信任。
+
+
+项目效果：
+obsidian 中文档效果：
+![img.png](docs-img/img.png)
+网页中展示的效果：
+![img.png](docs-img/img2.png)
